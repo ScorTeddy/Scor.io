@@ -132,7 +132,7 @@
   #hud.hidden { display: none; }
   .hud-tip {
     position: absolute; left: 1rem; top: calc(1rem + env(safe-area-inset-top, 0px));
-    font-size: 0.9rem; color: var(--ink-soft);
+    font: inherit; font-size: 0.9rem; color: var(--ink-soft); cursor: pointer; pointer-events: auto;
     background: var(--panel); border: 2px solid var(--panel-edge);
     padding: 0.35rem 0.75rem; border-radius: 0.9rem;
   }
@@ -210,6 +210,34 @@
   }
   .sprint-fill { height: 100%; width: 100%; background: #f5b301; border-radius: 999px; }
   .sprint-fill.tired { background: #9ca3af; }
+  /* ---------- Phone + controller ---------- */
+  button { touch-action: manipulation; }
+  canvas#game { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .tch, .padk { display: none; }
+  body.mode-touch .desk, body.mode-pad .desk { display: none; }
+  body.mode-touch .tch { display: inline; }
+  body.mode-pad .padk { display: inline; }
+  .draw-toggle {
+    display: none; font: inherit; font-weight: 600; font-size: 0.95rem; color: var(--ink);
+    background: var(--panel); border: 3px solid var(--panel-edge); border-radius: 999px;
+    padding: 0 1rem; height: 50px; cursor: pointer; white-space: nowrap;
+  }
+  .draw-toggle[aria-pressed="true"] { border-color: #38bdf8; background: #38bdf8; color: #06283d; }
+  body.mode-touch .draw-toggle { display: block; pointer-events: auto; }
+  body.mode-touch .dash-ring { pointer-events: auto; cursor: pointer; }
+  body.mode-touch .abilities {
+    left: 50%; transform: translateX(-50%); align-items: center; gap: 0.7rem;
+  }
+  body.mode-touch .sprint-track { width: 90px; }
+  body.mode-touch #minimap {
+    right: auto; left: 1rem; bottom: auto; top: calc(3.6rem + env(safe-area-inset-top, 0px));
+    width: 90px; height: 90px;
+  }
+  body.mode-touch .toast { bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px)); }
+  .rotate-hint { display: none; margin: 0; font-size: 0.85rem; color: var(--ink-soft); text-align: center; }
+  @media (orientation: portrait) and (pointer: coarse) { .rotate-hint { display: block; } }
+  @media (max-width: 900px) { .upgrades:not(.hidden) ~ .board { display: none; } }
+
   /* ---------- Leaderboard ---------- */
   .board {
     position: absolute; right: 1rem; top: calc(2.7rem + env(safe-area-inset-top, 0px));
@@ -331,16 +359,27 @@
 
     <button type="submit" id="play">Play</button>
     <p class="online" id="online" aria-live="polite"></p>
-    <p class="controls">
+    <p class="controls desk">
       <kbd>WASD</kbd> move, <kbd>Shift</kbd> sprint, <kbd>R</kbd> dash<br>
       Left-click shoot, right-click draw walls<br>
       <kbd>Esc</kbd> back to menu
     </p>
+    <p class="controls tch">
+      Left thumb moves (push all the way to sprint)<br>
+      Right thumb aims and shoots<br>
+      Tap Draw walls, then draw with your right thumb
+    </p>
+    <p class="controls padk">
+      <kbd>L</kbd> stick move, <kbd>R</kbd> stick aim, <kbd>R2</kbd> shoot<br>
+      <kbd>L2</kbd> draw walls, <kbd>R1</kbd> dash, <kbd>L1</kbd> sprint<br>
+      <kbd>D-pad</kbd> class, <kbd>L1</kbd>/<kbd>R1</kbd> color, <kbd>✕</kbd> play
+    </p>
+    <p class="rotate-hint">Tip: turn your phone sideways for more room.</p>
   </form>
 </div>
 
 <div id="hud" class="hidden">
-  <div class="hud-tip">Esc to leave<span id="count"></span><span id="kills">Kills 0</span></div>
+  <button type="button" class="hud-tip" id="leaveBtn"><span class="desk">Esc to leave</span><span class="tch">Leave</span><span class="padk">Options to leave</span><span id="count"></span><span id="kills">Kills 0</span></button>
   <div class="health" aria-label="Health">
     <div class="health-track"><div class="health-fill" id="hpFill"></div><div class="health-text" id="hpText">100</div></div>
   </div>
@@ -355,7 +394,7 @@
   </div>
   <div class="abilities">
     <div class="dash">
-      <kbd>R</kbd>
+      <kbd class="desk">R</kbd><kbd class="padk">R1</kbd>
       <div class="dash-ring" id="dashRing" aria-label="Dash">
         <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4 10h9M2 16h11M4 22h9"/><path d="M17 8l8 8-8 8"/>
@@ -364,8 +403,9 @@
         <div class="dash-num" id="dashNum"></div>
       </div>
     </div>
+    <button type="button" class="draw-toggle" id="drawToggle" aria-pressed="false">Draw walls</button>
     <div class="sprint">
-      <div class="sprint-label"><kbd>Shift</kbd> Sprint</div>
+      <div class="sprint-label"><kbd class="desk">Shift</kbd><kbd class="padk">L1</kbd> Sprint<span class="tch">: full stick</span></div>
       <div class="sprint-track"><div class="sprint-fill" id="sprintFill"></div></div>
     </div>
   </div>
@@ -385,6 +425,7 @@
     </fieldset>
     <button type="button" id="respawn" class="respawn-btn">Respawn</button>
     <button type="button" class="link-btn" id="toMenu">Main menu</button>
+    <p class="controls padk"><kbd>✕</kbd> respawn, <kbd>D-pad</kbd> change class</p>
   </div>
 </div>
 
@@ -479,6 +520,10 @@
     recoil: new Map(),            // player id -> time they last fired (for the kick-back)
     spread: 0,                    // crosshair opens up when you fire
     board: [],                    // [{id, name, color, kills}]
+    inputMode: "mouse",           // "mouse" | "touch" | "pad": whatever you used last
+    mouseFire: false, mouseDraw: false,
+    aimPoint: null,               // world point you're aiming/drawing at
+    touch: { move: null, aim: null, drawMode: false },  // on-screen thumbsticks
   };
 
   try {
@@ -540,7 +585,7 @@
   socket.on("hits", (hits) => {
     for (const h of hits) {
       for (let i = 0; i < 10; i++) spark(h.x, h.y, i % 2 ? "#ef4444" : "#fca5a5", 1);
-      if (h.id === myId) state.hurtFlash = 1;
+      if (h.id === myId) { state.hurtFlash = 1; rumble(120, 0.6); }
     }
   });
 
@@ -566,6 +611,7 @@
   socket.on("picked", ({ name }) => toast(`${name} upgraded!`));
   socket.on("kill", ({ name, heal }) => {
     toast(`You eliminated ${String(name).slice(0, 16)}  +${heal} HP`);
+    rumble(250, 1);
     state.hurtFlash = 0;
   });
 
@@ -798,7 +844,7 @@
     killerName.textContent = by;
     deathKills.textContent = kills;
     deathEl.classList.remove("hidden");
-    respawnBtn.focus();
+    if (state.inputMode !== "touch") respawnBtn.focus();
   }
   respawnBtn.addEventListener("click", () => {
     if (!socket.connected) return;
@@ -852,6 +898,7 @@
       firing: false, drawing: false, lastDrawPt: null, pointer: null,
       stats: { ...BASE_STATS },
     });
+    state.touch.move = state.touch.aim = null;
     hideOffer();
     killsEl.textContent = "Kills 0";
     deathEl.classList.add("hidden");
@@ -880,7 +927,7 @@
     hud.classList.add("hidden");
     hint.textContent = message || "";
     updateCounts();
-    nameInput.focus();
+    if (state.inputMode === "mouse") nameInput.focus();
   }
 
   // ================= Input =================
@@ -896,47 +943,179 @@
     if (pick !== undefined && !e.repeat) pickUpgrade(pick);
   });
   window.addEventListener("keyup", (e) => state.keys.delete(e.code));
-  window.addEventListener("blur", () => { state.keys.clear(); state.firing = false; state.drawing = false; state.lastDrawPt = null; });
+  window.addEventListener("blur", () => {
+    state.keys.clear(); state.mouseFire = state.mouseDraw = false;
+    state.touch.move = state.touch.aim = null;
+  });
 
-  // Mouse: left = shoot, right = draw. Touch: hold to move toward your finger.
-  function applyMouseButtons(e) {
-    if (state.screen !== "game") return;
-    state.firing = (e.buttons & 1) !== 0;
-    const wantDraw = (e.buttons & 2) !== 0;
-    if (wantDraw && !state.drawing) { state.drawing = true; state.lastDrawPt = screenToWorld(state.mouse); }
-    else if (!wantDraw && state.drawing) { state.drawing = false; state.lastDrawPt = null; }
+  function setInputMode(m) {
+    if (state.inputMode === m) return;
+    state.inputMode = m;
+    document.body.classList.toggle("mode-touch", m === "touch");
+    document.body.classList.toggle("mode-pad", m === "pad");
+    if (state.screen === "game") resize();
   }
+
+  // ---------- Mouse: left = shoot, right = draw ----------
+  function applyMouseButtons(e) {
+    state.mouseFire = (e.buttons & 1) !== 0;
+    state.mouseDraw = (e.buttons & 2) !== 0;
+  }
+  // ---------- Touch: left thumb = move stick, right thumb = aim/shoot stick (or pen) ----------
+  const STICK_R = 60;
   canvas.addEventListener("pointerdown", (e) => {
-    if (e.pointerType === "touch") { if (state.screen === "game") state.pointer = { x: e.clientX, y: e.clientY }; return; }
+    if (e.pointerType === "touch") {
+      setInputMode("touch");
+      if (state.screen !== "game") return;
+      canvas.setPointerCapture(e.pointerId);
+      const t = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
+      if (e.clientX < view.w / 2 && !state.touch.move) state.touch.move = t;
+      else if (!state.touch.aim) state.touch.aim = t;
+      return;
+    }
+    setInputMode("mouse");
     canvas.setPointerCapture(e.pointerId);
     state.mouse = { x: e.clientX, y: e.clientY };
     applyMouseButtons(e);
   });
   canvas.addEventListener("pointermove", (e) => {
-    if (e.pointerType === "touch") { if (state.pointer) state.pointer = { x: e.clientX, y: e.clientY }; return; }
+    if (e.pointerType === "touch") {
+      for (const k of ["move", "aim"]) {
+        const t = state.touch[k];
+        if (t && t.id === e.pointerId) { t.x = e.clientX; t.y = e.clientY; }
+      }
+      return;
+    }
+    if (state.inputMode !== "mouse" && state.mouse && Math.hypot(e.clientX - state.mouse.x, e.clientY - state.mouse.y) > 4) setInputMode("mouse");
     state.mouse = { x: e.clientX, y: e.clientY };
     applyMouseButtons(e);
   });
   ["pointerup", "pointercancel"].forEach((ev) => canvas.addEventListener(ev, (e) => {
-    if (e.pointerType === "touch") { state.pointer = null; return; }
+    if (e.pointerType === "touch") {
+      for (const k of ["move", "aim"]) if (state.touch[k] && state.touch[k].id === e.pointerId) state.touch[k] = null;
+      return;
+    }
     applyMouseButtons(e);
   }));
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  function stickOf(t) {
+    if (!t) return { x: 0, y: 0, mag: 0 };
+    const dx = t.x - t.ox, dy = t.y - t.oy, len = Math.hypot(dx, dy);
+    if (len < 8) return { x: 0, y: 0, mag: 0 };
+    const mag = Math.min(1, len / STICK_R);
+    return { x: (dx / len) * mag, y: (dy / len) * mag, mag };
+  }
+
+  // ---------- Controller (PS5 DualSense, Xbox, etc. via the Gamepad API) ----------
+  const PAD = { CROSS: 0, CIRCLE: 1, SQUARE: 2, L1: 4, R1: 5, L2: 6, R2: 7, OPTIONS: 9, L3: 10, UP: 12, LEFT: 14, RIGHT: 15 };
+  const pad = { gp: null, prev: [], move: { x: 0, y: 0, mag: 0 }, aim: { x: 0, y: 0, mag: 0 }, fire: false, draw: false, sprint: false };
+  function deadzone(x, y, dz) {
+    const len = Math.hypot(x, y);
+    if (len < dz) return { x: 0, y: 0, mag: 0 };
+    const mag = Math.min(1, (len - dz) / (1 - dz));
+    return { x: (x / len) * mag, y: (y / len) * mag, mag };
+  }
+  function pollPad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let gp = null;
+    for (const p of pads) if (p && p.connected) { gp = p; break; }
+    pad.gp = gp;
+    if (!gp) { pad.fire = pad.draw = pad.sprint = false; pad.move = pad.aim = { x: 0, y: 0, mag: 0 }; return; }
+    const btn = (i) => { const b = gp.buttons[i]; return !!b && (b.pressed || b.value > 0.3); };
+    const pressed = (i) => btn(i) && !pad.prev[i];
+    pad.move = deadzone(gp.axes[0] || 0, gp.axes[1] || 0, 0.18);
+    pad.aim = deadzone(gp.axes[2] || 0, gp.axes[3] || 0, 0.22);
+    pad.fire = btn(PAD.R2);
+    pad.draw = btn(PAD.L2);
+    pad.sprint = btn(PAD.L1) || btn(PAD.L3);
+    const anyUse = gp.buttons.some((b) => b && b.pressed) || pad.move.mag > 0 || pad.aim.mag > 0;
+    if (anyUse) setInputMode("pad");
+
+    if (state.screen === "game") {
+      if (pressed(PAD.R1) || pressed(PAD.CIRCLE)) tryDash();
+      if (pressed(PAD.LEFT)) pickUpgrade(0);
+      if (pressed(PAD.UP)) pickUpgrade(1);
+      if (pressed(PAD.RIGHT)) pickUpgrade(2);
+      if (pressed(PAD.OPTIONS)) backToMenu();
+    } else {
+      // menu + death screen: D-pad = class, L1/R1 = color, Cross = play / respawn
+      const ci = CLASSES.findIndex((c) => c.key === state.cls);
+      if (pressed(PAD.LEFT)) setClass(CLASSES[(ci - 1 + CLASSES.length) % CLASSES.length].key);
+      if (pressed(PAD.RIGHT)) setClass(CLASSES[(ci + 1) % CLASSES.length].key);
+      if (state.screen === "menu") {
+        const k = COLORS.indexOf(state.color);
+        if (pressed(PAD.L1)) setColor(COLORS[(Math.max(0, k) - 1 + COLORS.length) % COLORS.length]);
+        if (pressed(PAD.R1)) setColor(COLORS[(k + 1) % COLORS.length]);
+        if (pressed(PAD.CROSS)) {
+          if (!nameInput.value.trim()) { nameInput.value = "Player" + Math.floor(100 + Math.random() * 900); updateName(); }
+          form.requestSubmit();
+        }
+      } else if (state.screen === "dead" && pressed(PAD.CROSS)) respawnBtn.click();
+    }
+    pad.prev = gp.buttons.map((b) => !!b && (b.pressed || b.value > 0.3));
+  }
+  function rumble(ms, strength) {
+    if (state.inputMode !== "pad" || !pad.gp || !pad.gp.vibrationActuator) return;
+    try { pad.gp.vibrationActuator.playEffect("dual-rumble", { duration: ms, strongMagnitude: strength, weakMagnitude: strength }); } catch (e) {}
+  }
+
+  // ---------- Combine everything into one set of controls each frame ----------
+  function readControls(p) {
+    const k = state.keys;
+    let dx = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
+    let dy = (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0) - (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0);
+    let sprint = k.has("ShiftLeft") || k.has("ShiftRight");
+    const tMove = stickOf(state.touch.move);
+    if (dx || dy) { const l = Math.hypot(dx, dy); dx /= l; dy /= l; }
+    else if (tMove.mag > 0) { dx = tMove.x; dy = tMove.y; sprint = sprint || tMove.mag >= 0.95; }
+    else if (pad.move.mag > 0) { dx = pad.move.x; dy = pad.move.y; }
+    sprint = sprint || pad.sprint;
+
+    // where you're aiming (and where the pen is when drawing)
+    let aimPoint = null, fire = false, draw = false;
+    const T = state.touch;
+    if (state.inputMode === "touch") {
+      const tAim = stickOf(T.aim);
+      if (T.aim && T.drawMode) { aimPoint = screenToWorld({ x: T.aim.x, y: T.aim.y }); draw = true; }
+      else if (tAim.mag > 0) {
+        const l = Math.hypot(tAim.x, tAim.y);
+        aimPoint = { x: p.x + (tAim.x / l) * 220, y: p.y + (tAim.y / l) * 220 };
+        fire = tAim.mag > 0.3;
+      }
+    } else if (state.inputMode === "pad") {
+      if (pad.aim.mag > 0) {
+        const reach = state.stats.drawRange * 0.95;
+        const l = Math.hypot(pad.aim.x, pad.aim.y);
+        const r = pad.draw ? pad.aim.mag * reach : 220;   // when drawing, the stick moves the pen around you
+        aimPoint = { x: p.x + (pad.aim.x / l) * r, y: p.y + (pad.aim.y / l) * r };
+      } else if (pad.draw) {
+        aimPoint = { x: p.x + Math.cos(state.aim) * 60, y: p.y + Math.sin(state.aim) * 60 };
+      }
+      fire = pad.fire; draw = pad.draw;
+    } else if (state.mouse) {
+      aimPoint = screenToWorld(state.mouse);
+      fire = state.mouseFire; draw = state.mouseDraw;
+    }
+    if (!aimPoint) aimPoint = { x: p.x + Math.cos(state.aim) * 220, y: p.y + Math.sin(state.aim) * 220 };
+    return { dx, dy, sprint, aimPoint, fire, draw };
+  }
+
+  $("drawToggle").addEventListener("click", () => {
+    state.touch.drawMode = !state.touch.drawMode;
+    $("drawToggle").setAttribute("aria-pressed", String(state.touch.drawMode));
+  });
+  dashRing.addEventListener("pointerdown", (e) => { if (e.pointerType === "touch") { e.preventDefault(); tryDash(); } });
+  $("leaveBtn").addEventListener("click", () => backToMenu());
 
   function screenToWorld(pt) {
     return { x: state.camera.x + (pt.x - view.w / 2), y: state.camera.y + (pt.y - view.h / 2) };
   }
 
   function getMoveDirection() {
-    const k = state.keys;
-    let dx = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
-    let dy = (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0) - (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0);
-    if (dx === 0 && dy === 0 && state.pointer) {
-      dx = state.pointer.x - view.w / 2; dy = state.pointer.y - view.h / 2;
-      if (Math.hypot(dx, dy) < 10) return { dx: 0, dy: 0 };
-    }
-    const len = Math.hypot(dx, dy);
-    return len ? { dx: dx / len, dy: dy / len } : { dx: 0, dy: 0 };
+    const c = state.player ? readControls(state.player) : { dx: 0, dy: 0 };
+    const l = Math.hypot(c.dx, c.dy);
+    return l ? { dx: c.dx / l, dy: c.dy / l } : { dx: 0, dy: 0 };
   }
 
   let lastAimSent = 0, lastAimTime = 0;
@@ -956,8 +1135,8 @@
     const p = state.player;
     if (!p || now < state.dashReadyAt || !socket.connected) return;
     let { dx, dy } = getMoveDirection();
-    if (dx === 0 && dy === 0 && state.mouse) {   // standing still: dash toward the mouse
-      const a = screenToWorld(state.mouse);
+    if (dx === 0 && dy === 0 && state.aimPoint) {   // standing still: dash toward where you're aiming
+      const a = state.aimPoint;
       dx = a.x - p.x; dy = a.y - p.y;
       const l = Math.hypot(dx, dy); if (l < 1) return;
       dx /= l; dy /= l;
@@ -974,8 +1153,8 @@
   // ================= Shooting =================
   function handleShooting(now) {
     const p = state.player;
-    if (!state.firing || !state.mouse || !p || now < state.nextShotAt || !socket.connected) return;
-    const a = screenToWorld(state.mouse);
+    if (!state.firing || !state.aimPoint || !p || now < state.nextShotAt || !socket.connected) return;
+    const a = state.aimPoint;
     const dx = a.x - p.x, dy = a.y - p.y;
     if (Math.hypot(dx, dy) < 1) return;
     socket.emit("shoot", { dx, dy });
@@ -985,8 +1164,8 @@
   // ================= Drawing walls =================
   function handleDrawing() {
     state.outOfRange = false;
-    if (!state.drawing || !state.mouse) return;
-    const cur = screenToWorld(state.mouse);
+    if (!state.drawing || !state.aimPoint) return;
+    const cur = state.aimPoint;
     const p = state.player;
     state.outOfRange = Math.hypot(cur.x - p.x, cur.y - p.y) > state.stats.drawRange;
     if (state.outOfRange) { state.lastDrawPt = null; return; }
@@ -1127,12 +1306,13 @@
 
     if (state.screen === "game" && state.player) {
       const p = state.player;
-      const { dx, dy } = getMoveDirection();
-      const wantSprint = state.keys.has("ShiftLeft") || state.keys.has("ShiftRight");
-      if (state.mouse) {
-        const a = screenToWorld(state.mouse);
-        state.aim = Math.atan2(a.y - p.y, a.x - p.x);
-      }
+      const ctl = readControls(p);
+      const { dx, dy } = ctl, wantSprint = ctl.sprint;
+      state.aimPoint = ctl.aimPoint;
+      if (Math.hypot(ctl.aimPoint.x - p.x, ctl.aimPoint.y - p.y) > 2) state.aim = Math.atan2(ctl.aimPoint.y - p.y, ctl.aimPoint.x - p.x);
+      state.firing = ctl.fire;
+      if (ctl.draw && !state.drawing) { state.drawing = true; state.lastDrawPt = null; }
+      else if (!ctl.draw && state.drawing) { state.drawing = false; state.lastDrawPt = null; }
       sendInput(dx, dy, wantSprint, state.aim);
 
       if (now < state.dashUntil) {
@@ -1455,13 +1635,23 @@
         ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       }
       drawCrosshair();
+      drawSticks();
       renderMinimap();
     }
   }
 
   function drawCrosshair() {
-    if (!state.mouse || !state.player) return;
-    const { x, y } = state.mouse;
+    if (!state.player) return;
+    let x, y;
+    if (state.inputMode === "mouse") {
+      if (!state.mouse) return;
+      ({ x, y } = state.mouse);
+    } else {
+      if (!state.aimPoint) return;
+      if (state.inputMode === "touch" && !state.touch.aim) return;   // no crosshair until you aim
+      x = state.aimPoint.x - state.camera.x + view.w / 2;
+      y = state.aimPoint.y - state.camera.y + view.h / 2;
+    }
     const gap = 7 + state.spread, len = 8;
     ctx.lineCap = "round";
     for (const pass of [0, 1]) {            // dark outline, then bright line on top
@@ -1476,6 +1666,29 @@
       ctx.beginPath(); ctx.arc(x, y, pass ? 1.8 : 3, 0, Math.PI * 2);
       ctx.fillStyle = ctx.strokeStyle; ctx.fill();
     }
+  }
+
+  // on-screen thumbsticks (phones)
+  function drawSticks() {
+    if (state.inputMode !== "touch" || state.screen !== "game") return;
+    const { w, h } = view;
+    const drawStick = (t, fallbackX, color) => {
+      const ox = t ? t.ox : fallbackX, oy = t ? t.oy : h - 110;
+      ctx.globalAlpha = t ? 0.9 : 0.35;
+      ctx.beginPath(); ctx.arc(ox, oy, STICK_R, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.stroke();
+      let kx = ox, ky = oy;
+      if (t) {
+        const dx = t.x - t.ox, dy = t.y - t.oy, l = Math.hypot(dx, dy), m = Math.min(l, STICK_R);
+        if (l > 0) { kx = ox + (dx / l) * m; ky = oy + (dy / l) * m; }
+      }
+      ctx.beginPath(); ctx.arc(kx, ky, 26, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.globalAlpha = 1;
+    };
+    drawStick(state.touch.move, 110, "rgba(255,255,255,0.85)");
+    if (!(state.touch.drawMode && state.touch.aim)) drawStick(state.touch.aim, w - 110, state.touch.drawMode ? "#38bdf8" : "rgba(239,68,68,0.9)");
   }
 
   function renderMinimap() {
@@ -1503,6 +1716,7 @@
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    pollPad();
     update(dt);
     render();
     requestAnimationFrame(frame);
@@ -1516,6 +1730,9 @@
   new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   window.addEventListener("resize", resize);
 
+  if (window.matchMedia("(pointer: coarse)").matches) setInputMode("touch");
+  window.addEventListener("gamepadconnected", () => { setInputMode("pad"); toast("Controller connected!"); });
+
   buildSwatches();
   buildClassPickers();
   setClass(state.cls);
@@ -1525,7 +1742,7 @@
   updateCounts();
   readTheme();
   resize();
-  nameInput.focus();
+  if (state.inputMode !== "touch") nameInput.focus();
   requestAnimationFrame(frame);
 })();
 </script>
