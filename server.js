@@ -2,6 +2,7 @@
 // The server is the boss: it keeps everyone's position, moves players based on
 // the keys they're pressing, and tells every browser where everyone is.
 
+const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const express = require("express");
@@ -16,6 +17,11 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
+// Works whether index.html is inside the "public" folder or next to server.js
+const indexFile = fs.existsSync(path.join(__dirname, "public", "index.html"))
+  ? path.join(__dirname, "public", "index.html")
+  : path.join(__dirname, "index.html");
+app.get("/", (req, res) => res.sendFile(indexFile));
 const server = http.createServer(app);
 const io = new Server(server);
 
