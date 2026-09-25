@@ -12,7 +12,9 @@ const { Server } = require("socket.io");
 
 // ---------------- Settings (keep these in sync with index.html) ----------------
 const PORT = process.env.PORT || 3000;
-const WORLD_SIZE = 3000;
+const WORLD_SIZE = 4500;      // the arena is WORLD_SIZE x WORLD_SIZE
+const OBSTACLE_COUNT = 55;    // random rocks and blocks scattered around
+const SPAWN_MARGIN = 250;     // keep spawns away from the arena edge
 const PLAYER_RADIUS = 30;
 const PLAYER_SPEED = 320;     // pixels per second
 const TICK_RATE = 30;         // game updates per second
@@ -41,7 +43,7 @@ const BULLET_DAMAGE = 12;
 // Health
 const HP_MAX = 100;           // starting max health
 const HP_REGEN = 1;           // health healed per second, all the time
-const KILL_HEAL = 50;         // health you get back for eliminating someone
+const KILL_HEAL = 0.9;        // fraction of your max health you get back for a kill
 
 // ---------------- Upgrades (pick 1 of 3 after every kill) ----------------
 // Each has a max level. Damage and fire rate take small steps with low caps
@@ -145,6 +147,79 @@ function resolveWalls(p, list, radius) {
   }
 }
 
+// ---------------- Random obstacles ----------------
+// Circles ("rocks") and rectangles ("blocks"). Made once when the server starts.
+function makeObstacles() {
+  const list = [];
+  let tries = 0;
+  while (list.length < OBSTACLE_COUNT && tries++ < 5000) {
+    const round = Math.random() < 0.5;
+    const o = round
+      ? { type: "rock", x: 0, y: 0, r: 45 + Math.random() * 75 }
+      : { type: "block", x: 0, y: 0, w: 90 + Math.random() * 190, h: 60 + Math.random() * 130 };
+    if (!round && Math.random() < 0.5) [o.w, o.h] = [o.h, o.w];
+    const size = round ? o.r : Math.max(o.w, o.h) / 2;
+    o.x = 200 + size + Math.random() * (WORLD_SIZE - 400 - size * 2);
+    o.y = 200 + size + Math.random() * (WORLD_SIZE - 400 - size * 2);
+    // leave room between obstacles so nobody gets stuck
+    const clear = list.every((q) => {
+      const qs = q.type === "rock" ? q.r : Math.max(q.w, q.h) / 2;
+      return Math.hypot(q.x - o.x, q.y - o.y) > size + qs + 140;
+    });
+    if (clear) list.push(o);
+  }
+  return list.map((o) => o.type === "rock"
+    ? { type: "rock", x: Math.round(o.x), y: Math.round(o.y), r: Math.round(o.r) }
+    : { type: "block", x: Math.round(o.x - o.w / 2), y: Math.round(o.y - o.h / 2), w: Math.round(o.w), h: Math.round(o.h) });
+}
+const obstacles = makeObstacles();
+
+// Push a circle (player) out of every obstacle it overlaps
+function resolveObstacles(p, radius) {
+  for (const o of obstacles) {
+    if (o.type === "rock") {
+      const dx = p.x - o.x, dy = p.y - o.y, d = Math.hypot(dx, dy), min = o.r + radius;
+      if (d < min) {
+        const ux = d > 0.001 ? dx / d : 1, uy = d > 0.001 ? dy / d : 0;
+        p.x = o.x + ux * min; p.y = o.y + uy * min;
+      }
+    } else {
+      const cx = clamp(p.x, o.x, o.x + o.w), cy = clamp(p.y, o.y, o.y + o.h);
+      let dx = p.x - cx, dy = p.y - cy, d = Math.hypot(dx, dy);
+      if (d >= radius) continue;
+      if (d < 0.001) {
+        // center is inside the block: push out the nearest side
+        const sides = [p.x - o.x, o.x + o.w - p.x, p.y - o.y, o.y + o.h - p.y];
+        const m = Math.min(...sides), i = sides.indexOf(m);
+        if (i === 0) p.x = o.x - radius; else if (i === 1) p.x = o.x + o.w + radius;
+        else if (i === 2) p.y = o.y - radius; else p.y = o.y + o.h + radius;
+      } else {
+        p.x = cx + (dx / d) * radius; p.y = cy + (dy / d) * radius;
+      }
+    }
+  }
+}
+
+function pointInObstacle(x, y, pad) {
+  return obstacles.some((o) => o.type === "rock"
+    ? Math.hypot(x - o.x, y - o.y) < o.r + pad
+    : x > o.x - pad && x < o.x + o.w + pad && y > o.y - pad && y < o.y + o.h + pad);
+}
+
+// Pick a spawn point as far from everyone else as we can find
+function spawnPoint() {
+  let best = null, bestScore = -1;
+  for (let i = 0; i < 40; i++) {
+    const x = SPAWN_MARGIN + Math.random() * (WORLD_SIZE - SPAWN_MARGIN * 2);
+    const y = SPAWN_MARGIN + Math.random() * (WORLD_SIZE - SPAWN_MARGIN * 2);
+    if (pointInObstacle(x, y, PLAYER_RADIUS + 20)) continue;
+    let nearest = Infinity;
+    for (const q of players.values()) nearest = Math.min(nearest, Math.hypot(q.x - x, q.y - y));
+    if (nearest > bestScore) { bestScore = nearest; best = { x, y }; }
+  }
+  return best || { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
+}
+
 function readDir(data) {
   let dx = Number(data?.dx) || 0, dy = Number(data?.dy) || 0;
   const len = Math.hypot(dx, dy);
@@ -154,14 +229,14 @@ function readDir(data) {
 
 // ---------------- Players talking to the server ----------------
 io.on("connection", (socket) => {
+  socket.emit("world", { size: WORLD_SIZE, obstacles });
   socket.on("join", (data) => {
     const name = typeof data?.name === "string" ? data.name.trim().slice(0, 16) : "";
     if (!name) return;
     const color = typeof data?.color === "string" && HEX.test(data.color) ? data.color : "#3b82f6";
     const p = {
       id: socket.id, name, color,
-      x: WORLD_SIZE / 2 + (Math.random() - 0.5) * 1200,
-      y: WORLD_SIZE / 2 + (Math.random() - 0.5) * 1200,
+      x: 0, y: 0, aim: 0,
       dx: 0, dy: 0, sprint: false,
       stamina: STAMINA_MAX, lastSprint: 0, exhausted: false,
       dashUntil: 0, dashReadyAt: 0, dashDx: 0, dashDy: 0,
@@ -173,6 +248,8 @@ io.on("connection", (socket) => {
       staminaMax: STAMINA_MAX, dashCooldown: DASH_COOLDOWN,
       levels: {}, kills: 0, offer: null, pendingPicks: 0,
     };
+    const spot = spawnPoint();
+    p.x = spot.x; p.y = spot.y;
     players.set(socket.id, p);
     sendStats(p);
     socket.emit("welcome", { id: socket.id, x: p.x, y: p.y });
@@ -200,6 +277,8 @@ io.on("connection", (socket) => {
     const { dx, dy } = readDir(data);
     p.dx = dx; p.dy = dy;
     p.sprint = data?.sprint === true;
+    const aim = Number(data?.aim);
+    if (Number.isFinite(aim)) p.aim = aim;
   });
 
   socket.on("dash", (data) => {
@@ -224,13 +303,14 @@ io.on("connection", (socket) => {
     const l = Math.hypot(dx, dy);
     const ux = dx / l, uy = dy / l;
     p.lastShot = now;
+    p.aim = Math.atan2(uy, ux);
     const b = {
       id: nextBulletId++, owner: p.id, color: p.color, born: now, dmg: p.dmg,
       x: p.x + ux * (PLAYER_RADIUS + 8), y: p.y + uy * (PLAYER_RADIUS + 8),
       vx: ux * p.bulletSpeed, vy: uy * p.bulletSpeed,
     };
     bullets.push(b);
-    io.emit("shot", { id: b.id, x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color });
+    io.emit("shot", { id: b.id, owner: p.id, x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color });
   });
 
   socket.on("draw", (data) => {
@@ -288,6 +368,7 @@ setInterval(() => {
       // dashing: fly straight and ignore walls
       p.x += p.dashDx * DASH_SPEED * dt;
       p.y += p.dashDy * DASH_SPEED * dt;
+      resolveObstacles(p, PLAYER_RADIUS);   // dashes go through drawn walls, not rocks
     } else {
       const moving = p.dx !== 0 || p.dy !== 0;
       let speed = PLAYER_SPEED * p.speedMult;
@@ -303,6 +384,7 @@ setInterval(() => {
       p.x += p.dx * speed * dt;
       p.y += p.dy * speed * dt;
       resolveWalls(p, walls, PLAYER_RADIUS);
+      resolveObstacles(p, PLAYER_RADIUS);
     }
     p.x = clamp(p.x, PLAYER_RADIUS, WORLD_SIZE - PLAYER_RADIUS);
     p.y = clamp(p.y, PLAYER_RADIUS, WORLD_SIZE - PLAYER_RADIUS);
@@ -323,6 +405,7 @@ setInterval(() => {
           goneBullets.push(b.id); return false;
         }
       }
+      if (pointInObstacle(b.x, b.y, BULLET_RADIUS)) { goneBullets.push(b.id); return false; }
       for (const p of players.values()) {
         if (p.id === b.owner) continue;
         if (Math.hypot(p.x - b.x, p.y - b.y) < PLAYER_RADIUS + BULLET_RADIUS) {
@@ -347,10 +430,11 @@ setInterval(() => {
     io.to(p.id).emit("died", { by: killer ? killer.name : "someone", kills: p.kills });
     if (killer) {
       killer.kills++;
-      killer.hp = Math.min(killer.maxHp, killer.hp + KILL_HEAL);
+      const heal = Math.round(killer.maxHp * KILL_HEAL);
+      killer.hp = Math.min(killer.maxHp, killer.hp + heal);
       killer.pendingPicks++;
       sendStats(killer);
-      io.to(killer.id).emit("kill", { name: p.name, heal: KILL_HEAL });
+      io.to(killer.id).emit("kill", { name: p.name, heal });
       if (!killer.offer) makeOffer(killer);
     }
     io.emit("eliminated", { id: p.id, x: Math.round(p.x), y: Math.round(p.y), color: p.color });
@@ -366,6 +450,8 @@ setInterval(() => {
       exhausted: p.exhausted,
       dashing: now < p.dashUntil,
       dashCd: Math.max(0, p.dashReadyAt - now),
+      aim: Math.round(p.aim * 100) / 100,
+      kills: p.kills,
     })),
   });
 }, 1000 / TICK_RATE);

@@ -19,6 +19,8 @@
     --play: #2f9e6e;
     --play-ink: #ffffff;
     --focus: #1f6fd1;
+    --rock: #b9c4b3; --rock-edge: #95a28f;
+    --block: #c7c1b3; --block-edge: #a39b89;
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -28,12 +30,14 @@
       --arena: #1c2521; --grid: #26322c; --outside: #121815;
       --ink: #eef3ea; --ink-soft: #a4b3aa; --panel: #202b26; --panel-edge: #33423a;
       --play: #3fb883; --play-ink: #0d1a14; --focus: #7fb4ff;
+      --rock: #3a4a42; --rock-edge: #52655a; --block: #45433c; --block-edge: #5e5b51;
     }
   }
   :root[data-theme="dark"] {
     --arena: #1c2521; --grid: #26322c; --outside: #121815;
     --ink: #eef3ea; --ink-soft: #a4b3aa; --panel: #202b26; --panel-edge: #33423a;
     --play: #3fb883; --play-ink: #0d1a14; --focus: #7fb4ff;
+    --rock: #3a4a42; --rock-edge: #52655a; --block: #45433c; --block-edge: #5e5b51;
   }
   *, *::before, *::after { box-sizing: inherit; }
   html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
@@ -43,7 +47,7 @@
     font-family: "Fredoka", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
   }
   canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  canvas#game.drawable { cursor: crosshair; }
+  canvas#game.drawable { cursor: none; } /* we draw our own crosshair */
 
   /* ---------- Menu ---------- */
   #menu {
@@ -204,6 +208,22 @@
   }
   .sprint-fill { height: 100%; width: 100%; background: #f5b301; border-radius: 999px; }
   .sprint-fill.tired { background: #9ca3af; }
+  /* ---------- Leaderboard ---------- */
+  .board {
+    position: absolute; right: 1rem; top: calc(2.7rem + env(safe-area-inset-top, 0px));
+    width: 12.5rem; background: var(--panel); border: 2px solid var(--panel-edge);
+    border-radius: 1rem; padding: 0.55rem 0.75rem 0.6rem; opacity: 0.94;
+  }
+  .board h3 { margin: 0 0 0.3rem; font-size: 0.95rem; font-weight: 600; }
+  .board ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+  .board li { display: grid; grid-template-columns: 1.3rem 0.7rem 1fr auto; align-items: center; gap: 0.35rem; font-size: 0.9rem; }
+  .board .rank { color: var(--ink-soft); font-weight: 500; }
+  .board .dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; }
+  .board .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board .k { font-weight: 600; }
+  .board li.me .who { font-weight: 700; }
+  .board li.gap { display: block; text-align: center; color: var(--ink-soft); line-height: 0.6; }
+
   /* ---------- Upgrade cards ---------- */
   .upgrades {
     position: absolute; left: 50%; transform: translateX(-50%);
@@ -261,6 +281,7 @@
     color: var(--ink-soft); text-decoration: underline; font-size: 0.95rem;
   }
   .hud-tip #kills { margin-left: 0.6rem; color: var(--ink); font-weight: 500; }
+  @media (max-width: 760px) { .board { width: 10rem; } .board li { font-size: 0.8rem; } }
   @media (max-width: 560px) {
     .upgrade-row { grid-template-columns: 1fr; }
     .upgrade-desc { display: none; }
@@ -319,6 +340,10 @@
     <div class="upgrade-row" id="upgradeRow"></div>
   </div>
   <div class="toast" id="toast" role="status"></div>
+  <div class="board" aria-label="Leaderboard">
+    <h3>Leaderboard</h3>
+    <ol id="boardList"></ol>
+  </div>
   <div class="abilities">
     <div class="dash">
       <kbd>R</kbd>
@@ -352,7 +377,7 @@
 <script>
 (() => {
   // ================= Settings (keep in sync with server.js) =================
-  const WORLD_SIZE = 3000;
+  let WORLD_SIZE = 4500;       // the server confirms this when you connect
   const GRID = 50;
   const PLAYER_RADIUS = 30;
   const PLAYER_SPEED = 320;
@@ -397,7 +422,7 @@
   const dashRing = $("dashRing"), dashCd = $("dashCd"), dashNum = $("dashNum");
   const sprintFill = $("sprintFill");
   const upgradesEl = $("upgrades"), upgradesTitle = $("upgradesTitle"), upgradeRow = $("upgradeRow");
-  const toastEl = $("toast"), killsEl = $("kills");
+  const toastEl = $("toast"), killsEl = $("kills"), boardList = $("boardList");
   const deathEl = $("death"), killerName = $("killerName"), deathKills = $("deathKills");
   const respawnBtn = $("respawn"), toMenuBtn = $("toMenu");
 
@@ -423,6 +448,11 @@
     hp: HP_MAX, hurtFlash: 0, wasReady: true,
     stats: { ...BASE_STATS },
     offer: null,                  // upgrade cards waiting for you to pick
+    obstacles: [],                // rocks and blocks, from the server
+    aim: 0,                       // angle your gun points
+    recoil: new Map(),            // player id -> time they last fired (for the kick-back)
+    spread: 0,                    // crosshair opens up when you fire
+    board: [],                    // [{id, name, color, kills}]
   };
 
   try {
@@ -444,6 +474,11 @@
   });
   socket.on("disconnect", () => { myId = null; lastInput = ""; updateCounts(); });
 
+  socket.on("world", (d) => {
+    if (Number.isFinite(d.size)) WORLD_SIZE = d.size;
+    state.obstacles = Array.isArray(d.obstacles) ? d.obstacles : [];
+  });
+
   socket.on("welcome", (d) => {
     myId = d.id; lastInput = "";
     if (state.player && Number.isFinite(d.x)) {
@@ -461,9 +496,14 @@
   socket.on("wallsGone", (ids) => { const g = new Set(ids); state.walls = state.walls.filter((w) => !g.has(w.id)); });
 
   socket.on("shot", (b) => {
-    state.bullets.push({ ...b, born: performance.now() });
-    // little muzzle flash
-    for (let i = 0; i < 3; i++) spark(b.x, b.y, b.color, 0.5, Math.atan2(b.vy, b.vx), 0.6);
+    const now = performance.now();
+    state.bullets.push({ ...b, born: now });
+    const shooter = b.owner === myId ? "me" : b.owner;
+    state.recoil.set(shooter, now);
+    if (shooter === "me") state.spread = Math.min(18, state.spread + 7);
+    else { const o = state.others.get(b.owner); if (o) o.aim = Math.atan2(b.vy, b.vx); }
+    // sparks flying out of the barrel
+    for (let i = 0; i < 4; i++) spark(b.x, b.y, i % 2 ? "#fde68a" : b.color, 0.6, Math.atan2(b.vy, b.vx), 0.7);
   });
   socket.on("bulletsGone", (ids) => { const g = new Set(ids); state.bullets = state.bullets.filter((b) => !g.has(b.id)); });
 
@@ -496,6 +536,7 @@
   socket.on("picked", ({ name }) => toast(`${name} upgraded!`));
   socket.on("kill", ({ name, heal }) => {
     toast(`You eliminated ${String(name).slice(0, 16)}  +${heal} HP`);
+    state.hurtFlash = 0;
   });
 
   socket.on("state", (data) => {
@@ -524,8 +565,12 @@
       o.tx = sp.x; o.ty = sp.y; o.name = sp.name;
       o.color = HEX.test(sp.color) ? sp.color : "#64748b";
       o.ink = sp.ink; o.hp = sp.hp; o.maxHp = sp.maxHp || HP_MAX; o.dashing = sp.dashing;
+      if (Number.isFinite(sp.aim)) o.targetAim = sp.aim;
     }
     for (const id of state.others.keys()) if (!seen.has(id)) state.others.delete(id);
+    state.board = data.players
+      .map((q) => ({ id: q.id, name: q.name, color: HEX.test(q.color) ? q.color : "#64748b", kills: q.kills || 0 }))
+      .sort((a, b) => b.kills - a.kills || a.name.localeCompare(b.name));
     updateCounts();
   });
 
@@ -739,11 +784,15 @@
     return len ? { dx: dx / len, dy: dy / len } : { dx: 0, dy: 0 };
   }
 
-  function sendInput(dx, dy, sprint) {
+  let lastAimSent = 0, lastAimTime = 0;
+  function sendInput(dx, dy, sprint, aim) {
     const key = dx.toFixed(2) + "," + dy.toFixed(2) + "," + sprint;
-    if (key === lastInput || !socket.connected) return;
+    const now = performance.now();
+    const aimChanged = Math.abs(aim - lastAimSent) > 0.04 && now - lastAimTime > 50; // ~20 aim updates/sec max
+    if ((key === lastInput && !aimChanged) || !socket.connected) return;
     lastInput = key;
-    socket.emit("input", { dx, dy, sprint });
+    lastAimSent = aim; lastAimTime = now;
+    socket.emit("input", { dx, dy, sprint, aim: Math.round(aim * 100) / 100 });
   }
 
   // ================= Dash =================
@@ -822,6 +871,34 @@
     }
   }
 
+  // Same obstacle collision as the server
+  function resolveObstacles(p, radius) {
+    for (const o of state.obstacles) {
+      if (o.type === "rock") {
+        const dx = p.x - o.x, dy = p.y - o.y, d = Math.hypot(dx, dy), min = o.r + radius;
+        if (d < min) {
+          const ux = d > 0.001 ? dx / d : 1, uy = d > 0.001 ? dy / d : 0;
+          p.x = o.x + ux * min; p.y = o.y + uy * min;
+        }
+      } else {
+        const cx = Math.max(o.x, Math.min(o.x + o.w, p.x)), cy = Math.max(o.y, Math.min(o.y + o.h, p.y));
+        const dx = p.x - cx, dy = p.y - cy, d = Math.hypot(dx, dy);
+        if (d >= radius) continue;
+        if (d < 0.001) {
+          const sides = [p.x - o.x, o.x + o.w - p.x, p.y - o.y, o.y + o.h - p.y];
+          const i = sides.indexOf(Math.min(...sides));
+          if (i === 0) p.x = o.x - radius; else if (i === 1) p.x = o.x + o.w + radius;
+          else if (i === 2) p.y = o.y - radius; else p.y = o.y + o.h + radius;
+        } else { p.x = cx + (dx / d) * radius; p.y = cy + (dy / d) * radius; }
+      }
+    }
+  }
+  function pointInObstacle(x, y, pad) {
+    return state.obstacles.some((o) => o.type === "rock"
+      ? Math.hypot(x - o.x, y - o.y) < o.r + pad
+      : x > o.x - pad && x < o.x + o.w + pad && y > o.y - pad && y < o.y + o.h + pad);
+  }
+
   function segDist(px, py, w) {
     const vx = w.x2 - w.x1, vy = w.y2 - w.y1;
     const len2 = vx * vx + vy * vy;
@@ -852,6 +929,12 @@
     const k = Math.min(1, dt * 12);
     for (const [id, o] of state.others) {
       o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k;
+      if (o.targetAim !== undefined) {
+        if (o.aim === undefined) o.aim = o.targetAim;
+        let d = o.targetAim - o.aim;
+        d = Math.atan2(Math.sin(d), Math.cos(d));      // turn the short way around
+        o.aim += d * Math.min(1, dt * 15);
+      }
       if (o.dashing) addTrail(id, o.x, o.y, now);
     }
 
@@ -864,6 +947,10 @@
       b.x += b.vx * dt; b.y += b.vy * dt;
       for (const w of state.walls) if (segDist(b.x, b.y, w) < WALL_HALF + BULLET_RADIUS) {
         for (let i = 0; i < 4; i++) spark(b.x, b.y, b.color, 0.7);
+        return false;
+      }
+      if (pointInObstacle(b.x, b.y, BULLET_RADIUS)) {
+        for (let i = 0; i < 4; i++) spark(b.x, b.y, "#d6d3d1", 0.7);
         return false;
       }
       return true;
@@ -881,18 +968,24 @@
     }
 
     state.hurtFlash = Math.max(0, state.hurtFlash - dt * 2.5);
+    state.spread = Math.max(0, state.spread - dt * 60);
 
     if (state.screen === "game" && state.player) {
       const p = state.player;
       const { dx, dy } = getMoveDirection();
       const wantSprint = state.keys.has("ShiftLeft") || state.keys.has("ShiftRight");
-      sendInput(dx, dy, wantSprint);
+      if (state.mouse) {
+        const a = screenToWorld(state.mouse);
+        state.aim = Math.atan2(a.y - p.y, a.x - p.x);
+      }
+      sendInput(dx, dy, wantSprint, state.aim);
 
       if (now < state.dashUntil) {
         // dashing: zoom straight ahead, through walls
         p.x += state.dashDir.x * DASH_SPEED * dt;
         p.y += state.dashDir.y * DASH_SPEED * dt;
         addTrail("me", p.x, p.y, now);
+        resolveObstacles(p, p.r);
       } else {
         let speed = PLAYER_SPEED * state.stats.speedMult;
         if (wantSprint && (dx || dy) && !state.exhausted && state.stamina > 0) {
@@ -903,6 +996,7 @@
         p.x += dx * speed * dt;
         p.y += dy * speed * dt;
         resolveWalls(p, state.walls, p.r);
+        resolveObstacles(p, p.r);
       }
       p.x = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.x));
       p.y = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.y));
@@ -922,7 +1016,34 @@
     }
   }
 
+  let lastBoardKey = "";
+  function renderBoard() {
+    const key = JSON.stringify(state.board) + myId;
+    if (key === lastBoardKey) return;        // only rebuild when something changed
+    lastBoardKey = key;
+    boardList.textContent = "";
+    const row = (q, rank) => {
+      const li = document.createElement("li");
+      if (q.id === myId) li.className = "me";
+      const r = document.createElement("span"); r.className = "rank"; r.textContent = rank;
+      const d = document.createElement("span"); d.className = "dot"; d.style.background = q.color;
+      const n = document.createElement("span"); n.className = "who"; n.textContent = q.id === myId ? `${q.name} (you)` : q.name;
+      const k = document.createElement("span"); k.className = "k"; k.textContent = q.kills;
+      li.append(r, d, n, k);
+      boardList.appendChild(li);
+    };
+    const top = state.board.slice(0, 5);
+    top.forEach((q, i) => row(q, i + 1));
+    const myRank = state.board.findIndex((q) => q.id === myId);
+    if (myRank >= 5) {
+      const gap = document.createElement("li"); gap.className = "gap"; gap.textContent = "...";
+      boardList.appendChild(gap);
+      row(state.board[myRank], myRank + 1);
+    }
+  }
+
   function updateHud(now) {
+    renderBoard();
     const maxHp = state.stats.maxHp;
     const hp = Math.max(0, Math.min(maxHp, state.hp));
     hpFill.style.width = (hp / maxHp) * 100 + "%";
@@ -950,6 +1071,8 @@
     colors = {
       arena: s.getPropertyValue("--arena").trim(), grid: s.getPropertyValue("--grid").trim(),
       outside: s.getPropertyValue("--outside").trim(), ink: s.getPropertyValue("--ink").trim(),
+      rock: s.getPropertyValue("--rock").trim(), rockEdge: s.getPropertyValue("--rock-edge").trim(),
+      block: s.getPropertyValue("--block").trim(), blockEdge: s.getPropertyValue("--block-edge").trim(),
     };
   }
   function resize() {
@@ -972,7 +1095,40 @@
     ctx.closePath();
   }
 
+  // The gun: a barrel pointing where you aim, kicking back when it fires
+  function drawGun(p, sx, sy, aim, firedAt, now) {
+    const since = now - (firedAt || -1e9);
+    const kick = since < 110 ? (1 - since / 110) * 9 : 0;        // recoil
+    const len = p.r + 22 - kick, wdt = 15;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(aim);
+    ctx.fillStyle = darken(p.color, 0.55);
+    ctx.strokeStyle = darken(p.color, 0.35);
+    ctx.lineWidth = 3;
+    roundRect(p.r * 0.2 - kick, -wdt / 2, len - p.r * 0.2, wdt, 4);
+    ctx.fill(); ctx.stroke();
+    // muzzle flash
+    if (since < 70) {
+      const f = 1 - since / 70, tip = len + 4;
+      ctx.globalAlpha = f;
+      ctx.fillStyle = "#fff7c2";
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2, r = i % 2 ? 6 : 15 * f + 6;
+        const px = tip + Math.cos(a) * r * (a < Math.PI / 2 || a > Math.PI * 1.5 ? 1.4 : 0.6);
+        ctx.lineTo(px, Math.sin(a) * r);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#fbbf24";
+      ctx.beginPath(); ctx.arc(tip, 0, 5 * f + 2, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
   function drawPlayer(p, sx, sy, opts = {}) {
+    if (opts.aim !== undefined) drawGun(p, sx, sy, opts.aim, opts.firedAt, opts.now);
     // stretch along the dash direction for a speedy look
     ctx.save();
     ctx.translate(sx, sy);
@@ -1052,6 +1208,21 @@
     for (let y = top; y <= bottom; y += GRID) { ctx.moveTo(Math.max(0, ox), y + oy); ctx.lineTo(Math.min(w, ox + WORLD_SIZE), y + oy); }
     ctx.stroke();
 
+    // obstacles (only the ones on screen)
+    for (const o of state.obstacles) {
+      if (o.type === "rock") {
+        if (o.x + o.r + ox < 0 || o.x - o.r + ox > w || o.y + o.r + oy < 0 || o.y - o.r + oy > h) continue;
+        ctx.beginPath(); ctx.arc(o.x + ox, o.y + oy, o.r, 0, Math.PI * 2);
+        ctx.fillStyle = colors.rock; ctx.fill();
+        ctx.lineWidth = 6; ctx.strokeStyle = colors.rockEdge; ctx.stroke();
+      } else {
+        if (o.x + o.w + ox < 0 || o.x + ox > w || o.y + o.h + oy < 0 || o.y + oy > h) continue;
+        roundRect(o.x + ox, o.y + oy, o.w, o.h, 10);
+        ctx.fillStyle = colors.block; ctx.fill();
+        ctx.lineWidth = 6; ctx.strokeStyle = colors.blockEdge; ctx.stroke();
+      }
+    }
+
     // walls
     ctx.lineCap = "round"; ctx.lineWidth = WALL_HALF * 2;
     for (const wl of state.walls) {
@@ -1075,23 +1246,29 @@
     for (const [id, o] of state.others) drawTrail(id, o.color, ox, oy, now);
     if (state.player) drawTrail("me", state.player.color, ox, oy, now);
 
-    for (const o of state.others.values()) {
-      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink, hp: o.hp, maxHp: o.maxHp }, o.x + ox, o.y + oy, { showHp: true });
+    for (const [id, o] of state.others) {
+      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink, hp: o.hp, maxHp: o.maxHp }, o.x + ox, o.y + oy,
+        { showHp: true, aim: o.aim || 0, firedAt: state.recoil.get(id), now });
     }
     if (state.player) {
       const dashing = now < state.dashUntil;
       drawPlayer(state.player, state.player.x + ox, state.player.y + oy,
-        { stretch: dashing ? Math.atan2(state.dashDir.y, state.dashDir.x) : 0 });
+        { stretch: dashing ? Math.atan2(state.dashDir.y, state.dashDir.x) : 0, aim: state.aim, firedAt: state.recoil.get("me"), now });
     }
 
     // bullets
+    ctx.lineCap = "round";
     for (const b of state.bullets) {
-      ctx.beginPath();
-      ctx.arc(b.x + ox, b.y + oy, BULLET_RADIUS + 1.5, 0, Math.PI * 2);
-      ctx.fillStyle = darken(b.color, 0.6); ctx.fill();
-      ctx.beginPath();
-      ctx.arc(b.x + ox, b.y + oy, BULLET_RADIUS - 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = b.color; ctx.fill();
+      const sp = Math.hypot(b.vx, b.vy) || 1;
+      const tx = b.x - (b.vx / sp) * 34, ty = b.y - (b.vy / sp) * 34;   // tail of the tracer
+      const g = ctx.createLinearGradient(tx + ox, ty + oy, b.x + ox, b.y + oy);
+      g.addColorStop(0, "rgba(255,255,255,0)");
+      g.addColorStop(1, b.color);
+      ctx.strokeStyle = g; ctx.lineWidth = BULLET_RADIUS * 1.6;
+      ctx.beginPath(); ctx.moveTo(tx + ox, ty + oy); ctx.lineTo(b.x + ox, b.y + oy); ctx.stroke();
+      ctx.beginPath(); ctx.arc(b.x + ox, b.y + oy, BULLET_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = "#fffbe6"; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = b.color; ctx.stroke();
     }
 
     // sparks
@@ -1130,7 +1307,27 @@
         g.addColorStop(1, `rgba(200,0,0,${strength})`);
         ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       }
+      drawCrosshair();
       renderMinimap();
+    }
+  }
+
+  function drawCrosshair() {
+    if (!state.mouse || !state.player) return;
+    const { x, y } = state.mouse;
+    const gap = 7 + state.spread, len = 8;
+    ctx.lineCap = "round";
+    for (const pass of [0, 1]) {            // dark outline, then bright line on top
+      ctx.lineWidth = pass ? 2.5 : 5.5;
+      ctx.strokeStyle = pass ? (state.drawing ? "#38bdf8" : "#ffffff") : "rgba(0,0,0,0.55)";
+      ctx.beginPath();
+      ctx.moveTo(x - gap - len, y); ctx.lineTo(x - gap, y);
+      ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + len, y);
+      ctx.moveTo(x, y - gap - len); ctx.lineTo(x, y - gap);
+      ctx.moveTo(x, y + gap); ctx.lineTo(x, y + gap + len);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, pass ? 1.8 : 3, 0, Math.PI * 2);
+      ctx.fillStyle = ctx.strokeStyle; ctx.fill();
     }
   }
 
@@ -1140,6 +1337,11 @@
     mctx.clearRect(0, 0, size, size);
     const scale = (size - pad * 2) / WORLD_SIZE;
     mctx.fillStyle = colors.arena; mctx.fillRect(pad, pad, size - pad * 2, size - pad * 2);
+    mctx.fillStyle = colors.rockEdge;
+    for (const o of state.obstacles) {
+      if (o.type === "rock") { mctx.beginPath(); mctx.arc(pad + o.x * scale, pad + o.y * scale, Math.max(1.5, o.r * scale), 0, Math.PI * 2); mctx.fill(); }
+      else mctx.fillRect(pad + o.x * scale, pad + o.y * scale, Math.max(2, o.w * scale), Math.max(2, o.h * scale));
+    }
     for (const o of state.others.values()) {
       mctx.beginPath(); mctx.arc(pad + o.x * scale, pad + o.y * scale, 3, 0, Math.PI * 2);
       mctx.fillStyle = o.color; mctx.fill();
