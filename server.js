@@ -19,7 +19,7 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 const INK_MAX = 450;        // how many pixels of line you can have "in the tank"
 const INK_REGEN = 180;      // ink refilled per second when you're not drawing
 const REGEN_DELAY = 500;    // ms after you stop drawing before ink refills
-const WALL_LIFE = 2500;     // ms a wall stays solid
+const WALL_LIFE = 2800;     // ms a wall exists (solid the whole time, fades at the end)
 const DRAW_RANGE = 260;     // you can only draw within this distance of your center
 const RANGE_SLACK = 60;     // extra wiggle room for lag between you and the server
 const WALL_HALF = 5;        // half the wall thickness
@@ -44,20 +44,37 @@ let nextWallId = 1;
 
 const clampWorld = (v) => Math.max(0, Math.min(WORLD_SIZE, v));
 
-// Push a player out of a line segment if they overlap it
-function pushOut(p, w) {
-  const vx = w.x2 - w.x1, vy = w.y2 - w.y1;
+// Distance from a point to a line segment
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const vx = x2 - x1, vy = y2 - y1;
   const len2 = vx * vx + vy * vy;
-  let t = len2 ? ((p.x - w.x1) * vx + (p.y - w.y1) * vy) / len2 : 0;
+  let t = len2 ? ((px - x1) * vx + (py - y1) * vy) / len2 : 0;
   t = Math.max(0, Math.min(1, t));
-  const cx = w.x1 + vx * t, cy = w.y1 + vy * t;   // closest point on the wall
-  let dx = p.x - cx, dy = p.y - cy;
-  let d = Math.hypot(dx, dy);
-  const min = PLAYER_RADIUS + WALL_HALF;
-  if (d >= min) return;
-  if (d < 0.001) { dx = -vy; dy = vx; d = Math.hypot(dx, dy) || 1; } // dead center: pick a side
-  p.x = cx + (dx / d) * min;
-  p.y = cy + (dy / d) * min;
+  return Math.hypot(px - (x1 + vx * t), py - (y1 + vy * t));
+}
+
+// Keep a player out of walls. Each pass, push away from only the CLOSEST
+// overlapping wall piece. (Pushing off every piece in a row made players slide
+// along where two pieces meet and slip through.)
+function resolveWalls(p, list, radius) {
+  const min = radius + WALL_HALF;
+  for (let iter = 0; iter < 4; iter++) {
+    let best = null, bestD = min;
+    for (const w of list) {
+      const vx = w.x2 - w.x1, vy = w.y2 - w.y1;
+      const len2 = vx * vx + vy * vy;
+      let t = len2 ? ((p.x - w.x1) * vx + (p.y - w.y1) * vy) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const cx = w.x1 + vx * t, cy = w.y1 + vy * t;
+      const d = Math.hypot(p.x - cx, p.y - cy);
+      if (d < bestD) { bestD = d; best = { cx, cy, vx, vy }; }
+    }
+    if (!best) return;
+    let dx = p.x - best.cx, dy = p.y - best.cy, d = bestD;
+    if (d < 0.001) { dx = -best.vy; dy = best.vx; d = Math.hypot(dx, dy) || 1; }
+    p.x = best.cx + (dx / d) * min;
+    p.y = best.cy + (dy / d) * min;
+  }
 }
 
 io.on("connection", (socket) => {
@@ -78,7 +95,8 @@ io.on("connection", (socket) => {
       ink: INK_MAX,
       lastDraw: 0,
     });
-    socket.emit("welcome", { id: socket.id, worldSize: WORLD_SIZE });
+    const me = players.get(socket.id);
+    socket.emit("welcome", { id: socket.id, worldSize: WORLD_SIZE, x: me.x, y: me.y });
     const now = Date.now();
     socket.emit("walls", walls.map((w) => ({ ...w, born: undefined, age: now - w.born })));
   });
@@ -104,6 +122,10 @@ io.on("connection", (socket) => {
     if (len < 1 || len > MAX_SEGMENT || p.ink < 1) return;
     const reach = DRAW_RANGE + RANGE_SLACK;
     if (Math.hypot(x1 - p.x, y1 - p.y) > reach || Math.hypot(x2 - p.x, y2 - p.y) > reach) return;
+    // can't draw on top of anyone (that would shove them through to the other side)
+    for (const other of players.values()) {
+      if (distToSegment(other.x, other.y, x1, y1, x2, y2) < PLAYER_RADIUS + WALL_HALF + 2) return;
+    }
     if (len > p.ink) {
       // not enough ink for the whole piece: draw only what they can afford
       const f = p.ink / len;
@@ -129,7 +151,13 @@ setInterval(() => {
   last = now;
 
   // walls disappear after their lifetime
-  walls = walls.filter((w) => now - w.born < WALL_LIFE);
+  const gone = [];
+  walls = walls.filter((w) => {
+    if (now - w.born < WALL_LIFE) return true;
+    gone.push(w.id);
+    return false;
+  });
+  if (gone.length) io.emit("wallsGone", gone);
 
   for (const p of players.values()) {
     // refill ink once you've stopped drawing for a moment
@@ -137,7 +165,7 @@ setInterval(() => {
 
     p.x += p.dx * PLAYER_SPEED * dt;
     p.y += p.dy * PLAYER_SPEED * dt;
-    for (let i = 0; i < 2; i++) for (const w of walls) pushOut(p, w);
+    resolveWalls(p, walls, PLAYER_RADIUS);
     p.x = Math.max(PLAYER_RADIUS, Math.min(WORLD_SIZE - PLAYER_RADIUS, p.x));
     p.y = Math.max(PLAYER_RADIUS, Math.min(WORLD_SIZE - PLAYER_RADIUS, p.y));
   }

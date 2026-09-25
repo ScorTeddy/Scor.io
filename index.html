@@ -188,8 +188,8 @@
   const PLAYER_SPEED = 320;    // pixels per second
   // Drawing / walls (must match server.js)
   const INK_MAX = 450;
-  const WALL_LIFE = 2500;      // ms solid
-  const WALL_FADE = 300;       // ms fade-out after that
+  const WALL_LIFE = 2800;      // ms a wall exists (the server removes it; this is for the fade)
+  const WALL_FADE = 300;       // fades during the last part of its life
   const DRAW_RANGE = 260;      // how far from your center you can draw
   const WALL_HALF = 5;
   const MAX_SEGMENT = 60;      // client sends lines in pieces this long or shorter
@@ -249,10 +249,21 @@
     updateCounts();
   });
   socket.on("disconnect", () => { myId = null; lastInput = ""; updateCounts(); });
-  socket.on("welcome", (data) => { myId = data.id; lastInput = ""; });
+  socket.on("welcome", (data) => {
+    myId = data.id; lastInput = "";
+    // start exactly where the server put us (no jump right after joining)
+    if (state.player && Number.isFinite(data.x)) {
+      state.player.x = data.x; state.player.y = data.y;
+      state.camera.x = data.x; state.camera.y = data.y;
+    }
+  });
   socket.on("walls", (list) => {
     const now = performance.now();
     state.walls = list.map((w) => ({ ...w, born: now - (w.age || 0) }));
+  });
+  socket.on("wallsGone", (ids) => {
+    const set = new Set(ids);
+    state.walls = state.walls.filter(w => !set.has(w.id));
   });
   socket.on("wall", (w) => {
     state.walls.push({ ...w, born: performance.now() - (w.age || 0) });
@@ -480,21 +491,28 @@
     state.lastDrawPt = state.myInk < 1 ? cur : from;
   }
 
-  // Same wall push-out as the server, so our own movement feels right
-  function pushOut(p, w) {
-    const vx = w.x2 - w.x1, vy = w.y2 - w.y1;
-    const len2 = vx * vx + vy * vy;
-    let t = len2 ? ((p.x - w.x1) * vx + (p.y - w.y1) * vy) / len2 : 0;
-    t = Math.max(0, Math.min(1, t));
-    const cx = w.x1 + vx * t, cy = w.y1 + vy * t;
-    let dx = p.x - cx, dy = p.y - cy;
-    let d = Math.hypot(dx, dy);
-    const min = p.r + WALL_HALF;
-    if (d >= min) return;
-    if (d < 0.001) { dx = -vy; dy = vx; d = Math.hypot(dx, dy) || 1; }
-    p.x = cx + (dx / d) * min;
-    p.y = cy + (dy / d) * min;
+  // Same wall collision as the server, so our own movement feels right
+  function resolveWalls(p, list, radius) {
+    const min = radius + WALL_HALF;
+    for (let iter = 0; iter < 4; iter++) {
+      let best = null, bestD = min;
+      for (const w of list) {
+        const vx = w.x2 - w.x1, vy = w.y2 - w.y1;
+        const len2 = vx * vx + vy * vy;
+        let t = len2 ? ((p.x - w.x1) * vx + (p.y - w.y1) * vy) / len2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const cx = w.x1 + vx * t, cy = w.y1 + vy * t;
+        const d = Math.hypot(p.x - cx, p.y - cy);
+        if (d < bestD) { bestD = d; best = { cx, cy, vx, vy }; }
+      }
+      if (!best) return;
+      let dx = p.x - best.cx, dy = p.y - best.cy, d = bestD;
+      if (d < 0.001) { dx = -best.vy; dy = best.vx; d = Math.hypot(dx, dy) || 1; }
+      p.x = best.cx + (dx / d) * min;
+      p.y = best.cy + (dy / d) * min;
+    }
   }
+
 
   function getMoveDirection() {
     const k = state.keys;
@@ -516,7 +534,8 @@
   function update(dt) {
     smoothOthers(dt);
     const now = performance.now();
-    state.walls = state.walls.filter(w => now - w.born < WALL_LIFE + WALL_FADE);
+    // the server says when walls are gone; this is just a backup cleanup
+    state.walls = state.walls.filter(w => now - w.born < WALL_LIFE + 1000);
     if (state.screen === "game" && state.player) {
       const p = state.player;
       const { dx, dy } = getMoveDirection();
@@ -525,8 +544,7 @@
       p.x += dx * PLAYER_SPEED * dt;
       p.y += dy * PLAYER_SPEED * dt;
       // bump into drawn walls that are still solid
-      for (let i = 0; i < 2; i++)
-        for (const w of state.walls) if (now - w.born < WALL_LIFE) pushOut(p, w);
+      resolveWalls(p, state.walls, p.r);
       // keep inside the arena walls
       p.x = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.x));
       p.y = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.y));
@@ -628,7 +646,8 @@
     ctx.lineWidth = WALL_HALF * 2;
     for (const w of state.walls) {
       const age = now - w.born;
-      const alpha = age < WALL_LIFE ? 1 : Math.max(0, 1 - (age - WALL_LIFE) / WALL_FADE);
+      const fadeStart = WALL_LIFE - WALL_FADE;
+      const alpha = age < fadeStart ? 1 : Math.max(0.15, 1 - (age - fadeStart) / WALL_FADE);
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = darken(w.color, 0.85);
       ctx.beginPath();
@@ -679,17 +698,28 @@
     if (state.player) drawPlayer(state.player, state.player.x + ox, state.player.y + oy);
 
     // red tint over everything outside your drawing circle
+    if (state.player && state.drawing) {
+      // faint ring so you can see your drawing range while you draw
+      const cx = state.player.x + ox, cy = state.player.y + oy;
+      ctx.beginPath();
+      ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
+      ctx.setLineDash([10, 10]);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(128, 128, 128, 0.35)";
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     if (state.player && state.rangeHint > 0.01) {
       const cx = state.player.x + ox, cy = state.player.y + oy;
       ctx.beginPath();
       ctx.rect(0, 0, w, h);
       ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2, true);
-      ctx.fillStyle = `rgba(220, 38, 38, ${0.18 * state.rangeHint})`;
+      ctx.fillStyle = `rgba(230, 40, 40, ${0.28 * state.rangeHint})`;
       ctx.fill("evenodd");
       ctx.beginPath();
       ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = `rgba(220, 38, 38, ${0.45 * state.rangeHint})`;
+      ctx.strokeStyle = `rgba(230, 40, 40, ${0.7 * state.rangeHint})`;
       ctx.stroke();
     }
 
