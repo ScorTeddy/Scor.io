@@ -16,10 +16,12 @@ const TICK_RATE = 30;       // game updates per second
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 // Drawing / walls (must match the client)
-const INK_MAX = 1000;       // how many pixels of line you can have "in the tank"
-const INK_REGEN = 300;      // ink refilled per second when you're not drawing
+const INK_MAX = 450;        // how many pixels of line you can have "in the tank"
+const INK_REGEN = 180;      // ink refilled per second when you're not drawing
 const REGEN_DELAY = 500;    // ms after you stop drawing before ink refills
-const WALL_LIFE = 5000;     // ms a wall stays solid
+const WALL_LIFE = 2500;     // ms a wall stays solid
+const DRAW_RANGE = 260;     // you can only draw within this distance of your center
+const RANGE_SLACK = 60;     // extra wiggle room for lag between you and the server
 const WALL_HALF = 5;        // half the wall thickness
 const MAX_SEGMENT = 80;     // longest single piece of line the server accepts
 const MAX_WALLS = 3000;     // safety cap for the whole arena
@@ -100,6 +102,8 @@ io.on("connection", (socket) => {
     x1 = clampWorld(x1); y1 = clampWorld(y1); x2 = clampWorld(x2); y2 = clampWorld(y2);
     let len = Math.hypot(x2 - x1, y2 - y1);
     if (len < 1 || len > MAX_SEGMENT || p.ink < 1) return;
+    const reach = DRAW_RANGE + RANGE_SLACK;
+    if (Math.hypot(x1 - p.x, y1 - p.y) > reach || Math.hypot(x2 - p.x, y2 - p.y) > reach) return;
     if (len > p.ink) {
       // not enough ink for the whole piece: draw only what they can afford
       const f = p.ink / len;

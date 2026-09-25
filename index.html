@@ -169,7 +169,7 @@
 
     <button type="submit" id="play">Play</button>
     <p class="online" id="online" aria-live="polite"></p>
-    <p class="controls"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move, click and drag to draw walls, <kbd>Esc</kbd> for menu</p>
+    <p class="controls"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move, right-click and drag to draw walls, <kbd>Esc</kbd> for menu</p>
   </form>
 </div>
 
@@ -187,9 +187,10 @@
   const PLAYER_RADIUS = 30;
   const PLAYER_SPEED = 320;    // pixels per second
   // Drawing / walls (must match server.js)
-  const INK_MAX = 1000;
-  const WALL_LIFE = 5000;      // ms solid
-  const WALL_FADE = 600;       // ms fade-out after that
+  const INK_MAX = 450;
+  const WALL_LIFE = 2500;      // ms solid
+  const WALL_FADE = 300;       // ms fade-out after that
+  const DRAW_RANGE = 260;      // how far from your center you can draw
   const WALL_HALF = 5;
   const MAX_SEGMENT = 60;      // client sends lines in pieces this long or shorter
   const MIN_SEGMENT = 10;
@@ -226,7 +227,9 @@
     drawing: false,          // mouse button held
     mouse: null,             // mouse position on screen while drawing
     lastDrawPt: null,        // world point the current line ended at
-    myInk: INK_MAX,       // peerId -> {x, y, tx, ty, name, color} for everyone else in the arena
+    myInk: INK_MAX,
+    outOfRange: false,       // trying to draw outside your circle right now
+    rangeHint: 0,            // 0..1, how visible the red "out of range" tint is
   };
 
   // ================= Multiplayer (server) =================
@@ -428,7 +431,7 @@
     if (state.screen !== "game") return;
     if (e.pointerType === "touch") {
       state.pointer = { x: e.clientX, y: e.clientY };
-    } else if (e.button === 0) {
+    } else if (e.button === 2) {
       canvas.setPointerCapture(e.pointerId);
       state.drawing = true;
       state.mouse = { x: e.clientX, y: e.clientY };
@@ -446,14 +449,23 @@
   ["pointerup", "pointercancel"].forEach(ev => canvas.addEventListener(ev, stopPointer));
   canvas.addEventListener("pointerleave", e => { if (e.pointerType === "touch") state.pointer = null; });
 
+  // right-click is for drawing, so don't pop up the browser menu
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
+
   function screenToWorld(pt) {
     return { x: state.camera.x + (pt.x - view.w / 2), y: state.camera.y + (pt.y - view.h / 2) };
   }
 
   // Turn the mouse path into short line pieces and send them to the server
   function handleDrawing() {
-    if (!state.drawing || !state.mouse || !state.lastDrawPt) return;
+    state.outOfRange = false;
+    if (!state.drawing || !state.mouse) return;
     const cur = screenToWorld(state.mouse);
+    const p = state.player;
+    // outside your drawing circle? stop the line and show the red hint
+    state.outOfRange = Math.hypot(cur.x - p.x, cur.y - p.y) > DRAW_RANGE;
+    if (state.outOfRange) { state.lastDrawPt = null; return; }
+    if (!state.lastDrawPt) { state.lastDrawPt = cur; return; }
     let from = state.lastDrawPt;
     let dist = Math.hypot(cur.x - from.x, cur.y - from.y);
     while (dist >= MIN_SEGMENT && state.myInk >= 1 && socket.connected) {
@@ -523,6 +535,9 @@
       state.camera.x += (p.x - state.camera.x) * t;
       state.camera.y += (p.y - state.camera.y) * t;
       handleDrawing();
+      // ease the red hint in and out
+      const target = state.outOfRange ? 1 : 0;
+      state.rangeHint += (target - state.rangeHint) * Math.min(1, dt * 12);
     } else if (!reducedMotion) {
       // slow drift behind the menu
       idleT += dt;
@@ -662,6 +677,21 @@
       drawPlayer({ x: o.x, y: o.y, r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink }, o.x + ox, o.y + oy);
     }
     if (state.player) drawPlayer(state.player, state.player.x + ox, state.player.y + oy);
+
+    // red tint over everything outside your drawing circle
+    if (state.player && state.rangeHint > 0.01) {
+      const cx = state.player.x + ox, cy = state.player.y + oy;
+      ctx.beginPath();
+      ctx.rect(0, 0, w, h);
+      ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2, true);
+      ctx.fillStyle = `rgba(220, 38, 38, ${0.18 * state.rangeHint})`;
+      ctx.fill("evenodd");
+      ctx.beginPath();
+      ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(220, 38, 38, ${0.45 * state.rangeHint})`;
+      ctx.stroke();
+    }
 
     if (state.screen === "game") renderMinimap();
   }
