@@ -143,6 +143,69 @@
   @media (prefers-reduced-motion: reduce) {
     .preview, #play, .swatch { transition: none; }
   }
+
+  /* ---------- Health, sprint, dash ---------- */
+  .health {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: calc(1rem + env(safe-area-inset-top, 0px));
+    width: min(320px, 46vw);
+  }
+  .health-track {
+    position: relative; height: 22px; border-radius: 999px; overflow: hidden;
+    background: rgba(40, 10, 10, 0.55); border: 2px solid rgba(255, 255, 255, 0.75);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  }
+  .health-fill {
+    position: absolute; inset: 0 auto 0 0; width: 100%;
+    background: linear-gradient(#f05252, #c81e1e);
+    transition: width 120ms linear;
+  }
+  .health-text {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: #fff; font-weight: 600; font-size: 0.85rem; letter-spacing: 0.02em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+  .abilities {
+    position: absolute; left: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    display: flex; align-items: flex-end; gap: 1rem;
+  }
+  .dash { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
+  .dash kbd { font-size: 0.85rem; background: var(--panel); }
+  .dash-ring {
+    position: relative; width: 66px; height: 66px; border-radius: 50%;
+    display: grid; place-items: center; overflow: hidden;
+    background: var(--panel); border: 3px solid #38bdf8; color: var(--ink);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+  }
+  .dash-ring.cooling { border-color: var(--panel-edge); color: var(--ink-soft); }
+  .dash-ring.ready-pop { animation: pop 320ms ease-out; }
+  @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.18); } 100% { transform: scale(1); } }
+  .dash-ring svg { width: 34px; height: 34px; }
+  .dash-cd {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(rgba(0, 0, 0, 0.5) var(--cd, 0turn), transparent 0);
+  }
+  .dash-num {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: #fff; font-weight: 700; font-size: 1.3rem; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  }
+  .sprint { display: flex; flex-direction: column; gap: 0.35rem; padding-bottom: 0.3rem; }
+  .sprint-label { font-size: 0.85rem; font-weight: 500; color: var(--ink-soft); }
+  .sprint-label kbd { background: var(--panel); }
+  .sprint-track {
+    width: 170px; height: 14px; border-radius: 999px; overflow: hidden;
+    background: var(--panel); border: 2px solid var(--panel-edge);
+  }
+  .sprint-fill { height: 100%; width: 100%; background: #f5b301; border-radius: 999px; }
+  .sprint-fill.tired { background: #9ca3af; }
+  @media (max-width: 560px) {
+    .sprint-track { width: 110px; }
+    #minimap { width: 96px; height: 96px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dash-ring.ready-pop { animation: none; }
+    .health-fill { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -169,311 +232,381 @@
 
     <button type="submit" id="play">Play</button>
     <p class="online" id="online" aria-live="polite"></p>
-    <p class="controls"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move, right-click and drag to draw walls, <kbd>Esc</kbd> for menu</p>
+    <p class="controls">
+      <kbd>WASD</kbd> move, <kbd>Shift</kbd> sprint, <kbd>R</kbd> dash<br>
+      Left-click shoot, right-click draw walls<br>
+      <kbd>Esc</kbd> back to menu
+    </p>
   </form>
 </div>
 
 <div id="hud" class="hidden">
   <div class="hud-tip">Esc to leave<span id="count"></span></div>
+  <div class="health" aria-label="Health">
+    <div class="health-track"><div class="health-fill" id="hpFill"></div><div class="health-text" id="hpText">100</div></div>
+  </div>
+  <div class="abilities">
+    <div class="dash">
+      <kbd>R</kbd>
+      <div class="dash-ring" id="dashRing" aria-label="Dash">
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 10h9M2 16h11M4 22h9"/><path d="M17 8l8 8-8 8"/>
+        </svg>
+        <div class="dash-cd" id="dashCd"></div>
+        <div class="dash-num" id="dashNum"></div>
+      </div>
+    </div>
+    <div class="sprint">
+      <div class="sprint-label"><kbd>Shift</kbd> Sprint</div>
+      <div class="sprint-track"><div class="sprint-fill" id="sprintFill"></div></div>
+    </div>
+  </div>
   <canvas id="minimap"></canvas>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
 (() => {
-  // ================= Config =================
-  const WORLD_SIZE = 3000;     // arena is WORLD_SIZE x WORLD_SIZE
-  const GRID = 50;             // grid line spacing
+  // ================= Settings (keep in sync with server.js) =================
+  const WORLD_SIZE = 3000;
+  const GRID = 50;
   const PLAYER_RADIUS = 30;
-  const PLAYER_SPEED = 320;    // pixels per second
-  // Drawing / walls (must match server.js)
+  const PLAYER_SPEED = 320;
+  // sprint
+  const SPRINT_MULT = 1.6;
+  const STAMINA_MAX = 100;
+  const STAMINA_DRAIN = 40;
+  // dash
+  const DASH_SPEED = 1500;
+  const DASH_TIME = 180;
+  const DASH_COOLDOWN = 10000;
+  // gun
+  const FIRE_MS = 160;
+  const BULLET_LIFE = 900;
+  const BULLET_RADIUS = 5;
+  // health
+  const HP_MAX = 100;
+  // walls
   const INK_MAX = 450;
-  const WALL_LIFE = 2800;      // ms a wall exists (the server removes it; this is for the fade)
-  const WALL_FADE = 300;       // fades during the last part of its life
-  const DRAW_RANGE = 260;      // how far from your center you can draw
+  const WALL_LIFE = 2800;
+  const WALL_FADE = 300;
+  const DRAW_RANGE = 260;
   const WALL_HALF = 5;
-  const MAX_SEGMENT = 60;      // client sends lines in pieces this long or shorter
+  const MAX_SEGMENT = 60;
   const MIN_SEGMENT = 10;
   const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
                   "#3b82f6", "#8b5cf6", "#ec4899", "#64748b"];
+  const HEX = /^#[0-9a-fA-F]{6}$/;
 
   // ================= DOM =================
-  const canvas = document.getElementById("game");
-  const ctx = canvas.getContext("2d");
-  const mini = document.getElementById("minimap");
-  const mctx = mini.getContext("2d");
-  const menu = document.getElementById("menu");
-  const hud = document.getElementById("hud");
-  const form = document.getElementById("menuForm");
-  const nameInput = document.getElementById("name");
-  const hint = document.getElementById("hint");
-  const preview = document.getElementById("preview");
-  const previewName = document.getElementById("previewName");
-  const swatchBox = document.getElementById("swatches");
-  const onlineEl = document.getElementById("online");
-  const countEl = document.getElementById("count");
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("game"), ctx = canvas.getContext("2d");
+  const mini = $("minimap"), mctx = mini.getContext("2d");
+  const menu = $("menu"), hud = $("hud"), form = $("menuForm");
+  const nameInput = $("name"), hint = $("hint");
+  const preview = $("preview"), previewName = $("previewName"), swatchBox = $("swatches");
+  const onlineEl = $("online"), countEl = $("count");
+  const hpFill = $("hpFill"), hpText = $("hpText");
+  const dashRing = $("dashRing"), dashCd = $("dashCd"), dashNum = $("dashNum");
+  const sprintFill = $("sprintFill");
 
   // ================= State =================
   const state = {
-    screen: "menu",          // "menu" | "game"
-    name: "",
-    color: COLORS[5],
-    player: null,
+    screen: "menu",
+    name: "", color: COLORS[5],
+    player: null,                 // me: {x, y, r, name, color, ink, hp}
     camera: { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 },
     keys: new Set(),
-    pointer: null,           // {x, y} in screen coords while touching/clicking
-    others: new Map(),
-    walls: [],               // {id, x1, y1, x2, y2, color, born}
-    drawing: false,          // mouse button held
-    mouse: null,             // mouse position on screen while drawing
-    lastDrawPt: null,        // world point the current line ended at
-    myInk: INK_MAX,
-    outOfRange: false,       // trying to draw outside your circle right now
-    rangeHint: 0,            // 0..1, how visible the red "out of range" tint is
+    pointer: null,                // touch position while holding (moves you)
+    mouse: null,                  // mouse position on screen
+    others: new Map(),            // id -> {x, y, tx, ty, name, color, ink, hp, dashing}
+    walls: [], bullets: [], particles: [], rings: [],
+    trails: new Map(),            // id -> [{x, y, t}] afterimages while dashing
+    // drawing
+    drawing: false, lastDrawPt: null, myInk: INK_MAX, outOfRange: false, rangeHint: 0,
+    // shooting
+    firing: false, nextShotAt: 0,
+    // sprint / dash / health
+    stamina: STAMINA_MAX, exhausted: false,
+    dashUntil: 0, dashReadyAt: 0, dashDir: { x: 1, y: 0 }, lastLocalDash: -1e9,
+    hp: HP_MAX, hurtFlash: 0, wasReady: true,
   };
 
-  // ================= Multiplayer (server) =================
-  // The server runs the real game. We send it which way we're pressing,
-  // and it sends back where everyone is ~30 times a second.
+  try {
+    const saved = JSON.parse(localStorage.getItem("circleio") || "null");
+    if (saved) { state.name = saved.name || ""; state.color = HEX.test(saved.color) ? saved.color : state.color; }
+  } catch (e) {}
+
+  // ================= Server connection =================
   const socket = io();
   let myId = null;
-  let online = 0;
   let lastInput = "";
 
   socket.on("connect", () => {
     hint.textContent = "";
     if (state.screen === "game" && state.player) {
-      // reconnected mid-game: rejoin
       socket.emit("join", { name: state.player.name, color: state.player.color });
     }
     updateCounts();
   });
   socket.on("disconnect", () => { myId = null; lastInput = ""; updateCounts(); });
-  socket.on("welcome", (data) => {
-    myId = data.id; lastInput = "";
-    // start exactly where the server put us (no jump right after joining)
-    if (state.player && Number.isFinite(data.x)) {
-      state.player.x = data.x; state.player.y = data.y;
-      state.camera.x = data.x; state.camera.y = data.y;
+
+  socket.on("welcome", (d) => {
+    myId = d.id; lastInput = "";
+    if (state.player && Number.isFinite(d.x)) {
+      state.player.x = d.x; state.player.y = d.y;
+      state.camera.x = d.x; state.camera.y = d.y;
     }
   });
+
   socket.on("walls", (list) => {
     const now = performance.now();
     state.walls = list.map((w) => ({ ...w, born: now - (w.age || 0) }));
   });
-  socket.on("wallsGone", (ids) => {
-    const set = new Set(ids);
-    state.walls = state.walls.filter(w => !set.has(w.id));
+  socket.on("wall", (w) => state.walls.push({ ...w, born: performance.now() - (w.age || 0) }));
+  socket.on("wallsGone", (ids) => { const g = new Set(ids); state.walls = state.walls.filter((w) => !g.has(w.id)); });
+
+  socket.on("shot", (b) => {
+    state.bullets.push({ ...b, born: performance.now() });
+    // little muzzle flash
+    for (let i = 0; i < 3; i++) spark(b.x, b.y, b.color, 0.5, Math.atan2(b.vy, b.vx), 0.6);
   });
-  socket.on("wall", (w) => {
-    state.walls.push({ ...w, born: performance.now() - (w.age || 0) });
+  socket.on("bulletsGone", (ids) => { const g = new Set(ids); state.bullets = state.bullets.filter((b) => !g.has(b.id)); });
+
+  socket.on("hits", (hits) => {
+    for (const h of hits) {
+      for (let i = 0; i < 10; i++) spark(h.x, h.y, i % 2 ? "#ef4444" : "#fca5a5", 1);
+      if (h.id === myId) state.hurtFlash = 1;
+    }
+  });
+
+  socket.on("dashed", ({ id }) => {
+    if (id === myId) return; // we already played our own
+    const o = state.others.get(id);
+    if (o) state.rings.push({ x: o.x, y: o.y, t: performance.now(), color: o.color });
+  });
+
+  socket.on("eliminated", ({ id, x, y, color }) => {
+    for (let i = 0; i < 28; i++) spark(x, y, color, 2.2);
+    state.rings.push({ x, y, t: performance.now(), color, big: true });
+    state.others.delete(id);
+  });
+
+  socket.on("died", ({ by }) => {
+    backToMenu(`You were eliminated by ${String(by).slice(0, 16)}.`);
   });
 
   socket.on("state", (data) => {
-    online = data.online || 0;
+    const now = performance.now();
     const seen = new Set();
     for (const sp of data.players) {
       if (sp.id === myId) {
-        // correct our own predicted position toward what the server says
         const p = state.player;
-        if (p) {
-          p.ink = sp.ink;
-          state.myInk = (sp.ink / 100) * INK_MAX;
+        if (!p) continue;
+        // don't fight the server while our own dash is playing out
+        if (now > state.dashUntil + 250) {
           const off = Math.hypot(sp.x - p.x, sp.y - p.y);
           if (off > 150) { p.x = sp.x; p.y = sp.y; }
           else { p.x += (sp.x - p.x) * 0.15; p.y += (sp.y - p.y) * 0.15; }
         }
+        p.ink = sp.ink;
+        state.myInk = (sp.ink / 100) * INK_MAX;
+        state.hp = sp.hp; p.hp = sp.hp;
+        state.stamina = sp.stamina; state.exhausted = sp.exhausted;
+        if (now - state.lastLocalDash > 600) state.dashReadyAt = now + sp.dashCd;
         continue;
       }
       seen.add(sp.id);
       let o = state.others.get(sp.id);
       if (!o) { o = { x: sp.x, y: sp.y }; state.others.set(sp.id, o); }
-      o.tx = sp.x; o.ty = sp.y; o.name = sp.name; o.color = sp.color; o.ink = sp.ink;
+      o.tx = sp.x; o.ty = sp.y; o.name = sp.name;
+      o.color = HEX.test(sp.color) ? sp.color : "#64748b";
+      o.ink = sp.ink; o.hp = sp.hp; o.dashing = sp.dashing;
     }
     for (const id of state.others.keys()) if (!seen.has(id)) state.others.delete(id);
     updateCounts();
   });
 
-  function sendInput(dx, dy) {
-    const key = dx.toFixed(2) + "," + dy.toFixed(2);
-    if (key === lastInput || !socket.connected) return; // only send changes
-    lastInput = key;
-    socket.emit("input", { dx, dy });
-  }
-
-  function smoothOthers(dt) {
-    // glide toward the latest known spot so movement looks smooth between updates
-    const t = Math.min(1, dt * 12);
-    for (const o of state.others.values()) {
-      o.x += (o.tx - o.x) * t;
-      o.y += (o.ty - o.y) * t;
-    }
-  }
-
   function updateCounts() {
-    const inArena = state.others.size;
-    onlineEl.innerHTML = "";
-    if (!socket.connected) {
-      onlineEl.textContent = "Connecting to the server...";
-    } else if (inArena > 0) {
+    const n = state.others.size;
+    onlineEl.textContent = "";
+    if (!socket.connected) onlineEl.textContent = "Connecting to the server...";
+    else if (n > 0) {
       const pip = document.createElement("span"); pip.className = "pip";
-      onlineEl.append(pip, `${inArena} ${inArena === 1 ? "player" : "players"} in the arena`);
-    } else {
-      onlineEl.textContent = "Arena is empty. Be the first in!";
-    }
-    const total = inArena + (state.screen === "game" ? 1 : 0);
-    countEl.textContent = socket.connected ? `${total} playing` : "reconnecting...";
+      onlineEl.append(pip, `${n} ${n === 1 ? "player" : "players"} in the arena`);
+    } else onlineEl.textContent = "Arena is empty. Be the first in!";
+    countEl.textContent = socket.connected ? `${n + (state.screen === "game" ? 1 : 0)} playing` : "reconnecting...";
   }
-
-  // Remember name + color between visits
-  try {
-    const saved = JSON.parse(localStorage.getItem("circleio") || "null");
-    if (saved) { state.name = saved.name || ""; state.color = saved.color || state.color; }
-  } catch (e) {}
 
   // ================= Menu =================
   function buildSwatches() {
-    COLORS.forEach(c => {
+    COLORS.forEach((c) => {
       const b = document.createElement("button");
-      b.type = "button";
-      b.className = "swatch";
-      b.style.background = c;
-      b.dataset.color = c;
+      b.type = "button"; b.className = "swatch"; b.style.background = c; b.dataset.color = c;
       b.setAttribute("aria-label", "Color " + c);
       b.addEventListener("click", () => setColor(c));
       swatchBox.appendChild(b);
     });
-    // custom color picker as the 10th swatch
     const wrap = document.createElement("label");
-    wrap.className = "custom";
-    wrap.title = "Pick any color";
+    wrap.className = "custom"; wrap.title = "Pick any color";
     const picker = document.createElement("input");
-    picker.type = "color";
-    picker.setAttribute("aria-label", "Pick a custom color");
-    picker.addEventListener("input", e => setColor(e.target.value));
-    wrap.appendChild(picker);
-    swatchBox.appendChild(wrap);
+    picker.type = "color"; picker.setAttribute("aria-label", "Pick a custom color");
+    picker.addEventListener("input", (e) => setColor(e.target.value));
+    wrap.appendChild(picker); swatchBox.appendChild(wrap);
   }
-
   function setColor(c) {
     state.color = c;
     preview.style.backgroundColor = c;
-    const isPreset = COLORS.includes(c);
-    swatchBox.querySelectorAll(".swatch").forEach(s =>
-      s.setAttribute("aria-pressed", String(s.dataset.color === c)));
-    swatchBox.querySelector(".custom").classList.toggle("active", !isPreset);
+    swatchBox.querySelectorAll(".swatch").forEach((s) => s.setAttribute("aria-pressed", String(s.dataset.color === c)));
+    swatchBox.querySelector(".custom").classList.toggle("active", !COLORS.includes(c));
   }
-
   function updateName() {
     state.name = nameInput.value.trim();
     previewName.textContent = state.name || "you";
-    if (state.name) hint.textContent = "";
   }
-
-  nameInput.addEventListener("input", updateName);
-
-  form.addEventListener("submit", e => {
+  nameInput.addEventListener("input", () => { updateName(); if (state.name) hint.textContent = ""; });
+  form.addEventListener("submit", (e) => {
     e.preventDefault();
     updateName();
-    if (!state.name) {
-      hint.textContent = "Type a name to play.";
-      nameInput.focus();
-      return;
-    }
-    if (!socket.connected) {
-      hint.textContent = "Still connecting to the server. Try again in a few seconds.";
-      return;
-    }
+    if (!state.name) { hint.textContent = "Type a name to play."; nameInput.focus(); return; }
+    if (!socket.connected) { hint.textContent = "Still connecting to the server. Try again in a few seconds."; return; }
     startGame();
   });
 
   // ================= Game flow =================
   function startGame() {
     try { localStorage.setItem("circleio", JSON.stringify({ name: state.name, color: state.color })); } catch (e) {}
-    state.player = {
-      x: WORLD_SIZE / 2 + (Math.random() - 0.5) * 600,
-      y: WORLD_SIZE / 2 + (Math.random() - 0.5) * 600,
-      r: PLAYER_RADIUS,
-      name: state.name,
-      color: state.color,
-    };
-    state.camera.x = state.player.x;
-    state.camera.y = state.player.y;
+    state.player = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, r: PLAYER_RADIUS, name: state.name, color: state.color, ink: 100, hp: HP_MAX };
+    Object.assign(state, {
+      screen: "game", myInk: INK_MAX, hp: HP_MAX, stamina: STAMINA_MAX, exhausted: false,
+      dashUntil: 0, dashReadyAt: 0, lastLocalDash: -1e9, hurtFlash: 0, wasReady: true,
+      firing: false, drawing: false, lastDrawPt: null, pointer: null,
+    });
     state.keys.clear();
-    state.screen = "game";
     lastInput = "";
-    state.myInk = INK_MAX;
-    state.player.ink = 100;
-    canvas.classList.add("drawable");
+    hint.textContent = "";
     socket.emit("join", { name: state.name, color: state.color });
-    updateCounts();
+    canvas.classList.add("drawable");
     menu.classList.add("hidden");
     hud.classList.remove("hidden");
-    canvas.focus();
+    resize();   // minimap size depends on the HUD being visible
+    updateCounts();
   }
 
-  function backToMenu() {
+  function backToMenu(message) {
     state.screen = "menu";
     state.player = null;
-    state.pointer = null;
-    state.drawing = false; state.mouse = null; state.lastDrawPt = null;
+    Object.assign(state, { pointer: null, drawing: false, lastDrawPt: null, firing: false, hurtFlash: 0 });
+    state.keys.clear();
     canvas.classList.remove("drawable");
     myId = null;
     socket.emit("leave");
-    updateCounts();
     menu.classList.remove("hidden");
     hud.classList.add("hidden");
+    hint.textContent = message || "";
+    updateCounts();
     nameInput.focus();
   }
 
   // ================= Input =================
   const MOVE_KEYS = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-
-  window.addEventListener("keydown", e => {
+  window.addEventListener("keydown", (e) => {
     if (state.screen !== "game") return;
     if (e.code === "Escape") { backToMenu(); return; }
-    if (MOVE_KEYS.includes(e.code)) { state.keys.add(e.code); e.preventDefault(); }
-  });
-  window.addEventListener("keyup", e => state.keys.delete(e.code));
-  window.addEventListener("blur", () => state.keys.clear());
-
-  // Mouse: click and drag to draw walls. Touch: hold to move toward your finger.
-  canvas.addEventListener("pointerdown", e => {
-    if (state.screen !== "game") return;
-    if (e.pointerType === "touch") {
-      state.pointer = { x: e.clientX, y: e.clientY };
-    } else if (e.button === 2) {
-      canvas.setPointerCapture(e.pointerId);
-      state.drawing = true;
-      state.mouse = { x: e.clientX, y: e.clientY };
-      state.lastDrawPt = screenToWorld(state.mouse);
+    if (MOVE_KEYS.includes(e.code) || e.code === "ShiftLeft" || e.code === "ShiftRight") {
+      state.keys.add(e.code); e.preventDefault();
     }
+    if (e.code === "KeyR" && !e.repeat) tryDash();
   });
-  canvas.addEventListener("pointermove", e => {
-    if (e.pointerType === "touch") { if (state.pointer) state.pointer = { x: e.clientX, y: e.clientY }; }
-    else if (state.drawing) state.mouse = { x: e.clientX, y: e.clientY };
-  });
-  function stopPointer(e) {
-    if (e.pointerType === "touch") state.pointer = null;
-    else { state.drawing = false; state.mouse = null; state.lastDrawPt = null; }
-  }
-  ["pointerup", "pointercancel"].forEach(ev => canvas.addEventListener(ev, stopPointer));
-  canvas.addEventListener("pointerleave", e => { if (e.pointerType === "touch") state.pointer = null; });
+  window.addEventListener("keyup", (e) => state.keys.delete(e.code));
+  window.addEventListener("blur", () => { state.keys.clear(); state.firing = false; state.drawing = false; state.lastDrawPt = null; });
 
-  // right-click is for drawing, so don't pop up the browser menu
-  canvas.addEventListener("contextmenu", e => e.preventDefault());
+  // Mouse: left = shoot, right = draw. Touch: hold to move toward your finger.
+  function applyMouseButtons(e) {
+    if (state.screen !== "game") return;
+    state.firing = (e.buttons & 1) !== 0;
+    const wantDraw = (e.buttons & 2) !== 0;
+    if (wantDraw && !state.drawing) { state.drawing = true; state.lastDrawPt = screenToWorld(state.mouse); }
+    else if (!wantDraw && state.drawing) { state.drawing = false; state.lastDrawPt = null; }
+  }
+  canvas.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "touch") { if (state.screen === "game") state.pointer = { x: e.clientX, y: e.clientY }; return; }
+    canvas.setPointerCapture(e.pointerId);
+    state.mouse = { x: e.clientX, y: e.clientY };
+    applyMouseButtons(e);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") { if (state.pointer) state.pointer = { x: e.clientX, y: e.clientY }; return; }
+    state.mouse = { x: e.clientX, y: e.clientY };
+    applyMouseButtons(e);
+  });
+  ["pointerup", "pointercancel"].forEach((ev) => canvas.addEventListener(ev, (e) => {
+    if (e.pointerType === "touch") { state.pointer = null; return; }
+    applyMouseButtons(e);
+  }));
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   function screenToWorld(pt) {
     return { x: state.camera.x + (pt.x - view.w / 2), y: state.camera.y + (pt.y - view.h / 2) };
   }
 
-  // Turn the mouse path into short line pieces and send them to the server
+  function getMoveDirection() {
+    const k = state.keys;
+    let dx = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
+    let dy = (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0) - (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0);
+    if (dx === 0 && dy === 0 && state.pointer) {
+      dx = state.pointer.x - view.w / 2; dy = state.pointer.y - view.h / 2;
+      if (Math.hypot(dx, dy) < 10) return { dx: 0, dy: 0 };
+    }
+    const len = Math.hypot(dx, dy);
+    return len ? { dx: dx / len, dy: dy / len } : { dx: 0, dy: 0 };
+  }
+
+  function sendInput(dx, dy, sprint) {
+    const key = dx.toFixed(2) + "," + dy.toFixed(2) + "," + sprint;
+    if (key === lastInput || !socket.connected) return;
+    lastInput = key;
+    socket.emit("input", { dx, dy, sprint });
+  }
+
+  // ================= Dash =================
+  function tryDash() {
+    const now = performance.now();
+    const p = state.player;
+    if (!p || now < state.dashReadyAt || !socket.connected) return;
+    let { dx, dy } = getMoveDirection();
+    if (dx === 0 && dy === 0 && state.mouse) {   // standing still: dash toward the mouse
+      const a = screenToWorld(state.mouse);
+      dx = a.x - p.x; dy = a.y - p.y;
+      const l = Math.hypot(dx, dy); if (l < 1) return;
+      dx /= l; dy /= l;
+    }
+    if (dx === 0 && dy === 0) return;
+    state.dashDir = { x: dx, y: dy };
+    state.dashUntil = now + DASH_TIME;
+    state.dashReadyAt = now + DASH_COOLDOWN;
+    state.lastLocalDash = now;
+    state.rings.push({ x: p.x, y: p.y, t: now, color: p.color });
+    socket.emit("dash", { dx, dy });
+  }
+
+  // ================= Shooting =================
+  function handleShooting(now) {
+    const p = state.player;
+    if (!state.firing || !state.mouse || !p || now < state.nextShotAt || !socket.connected) return;
+    const a = screenToWorld(state.mouse);
+    const dx = a.x - p.x, dy = a.y - p.y;
+    if (Math.hypot(dx, dy) < 1) return;
+    socket.emit("shoot", { dx, dy });
+    state.nextShotAt = now + FIRE_MS;
+  }
+
+  // ================= Drawing walls =================
   function handleDrawing() {
     state.outOfRange = false;
     if (!state.drawing || !state.mouse) return;
     const cur = screenToWorld(state.mouse);
     const p = state.player;
-    // outside your drawing circle? stop the line and show the red hint
     state.outOfRange = Math.hypot(cur.x - p.x, cur.y - p.y) > DRAW_RANGE;
     if (state.outOfRange) { state.lastDrawPt = null; return; }
     if (!state.lastDrawPt) { state.lastDrawPt = cur; return; }
@@ -487,11 +620,10 @@
       from = to;
       dist = Math.hypot(cur.x - from.x, cur.y - from.y);
     }
-    // out of ink: keep the pen "attached" to the mouse so it doesn't jump when ink comes back
     state.lastDrawPt = state.myInk < 1 ? cur : from;
   }
 
-  // Same wall collision as the server, so our own movement feels right
+  // Same wall collision as the server: push off only the closest piece each pass
   function resolveWalls(p, list, radius) {
     const min = radius + WALL_HALF;
     for (let iter = 0; iter < 4; iter++) {
@@ -513,247 +645,335 @@
     }
   }
 
+  function segDist(px, py, w) {
+    const vx = w.x2 - w.x1, vy = w.y2 - w.y1;
+    const len2 = vx * vx + vy * vy;
+    let t = len2 ? ((px - w.x1) * vx + (py - w.y1) * vy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (w.x1 + vx * t), py - (w.y1 + vy * t));
+  }
 
-  function getMoveDirection() {
-    const k = state.keys;
-    let dx = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
-    let dy = (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0) - (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0);
+  // ================= Effects =================
+  function spark(x, y, color, power, angle, spread) {
+    const a = angle === undefined ? Math.random() * Math.PI * 2 : angle + (Math.random() - 0.5) * (spread || 1);
+    const sp = (80 + Math.random() * 220) * power;
+    state.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.35 + Math.random() * 0.25, age: 0, color, size: 2 + Math.random() * 3 * Math.min(power, 1.5) });
+  }
 
-    if (dx === 0 && dy === 0 && state.pointer) {
-      // direction from screen center (where the player is drawn) to the pointer
-      dx = state.pointer.x - view.w / 2;
-      dy = state.pointer.y - view.h / 2;
-      if (Math.hypot(dx, dy) < 10) return { dx: 0, dy: 0 };
-    }
-    const len = Math.hypot(dx, dy);
-    return len ? { dx: dx / len, dy: dy / len } : { dx: 0, dy: 0 }; // normalized so diagonals aren't faster
+  function addTrail(id, x, y, now) {
+    let t = state.trails.get(id);
+    if (!t) { t = []; state.trails.set(id, t); }
+    t.push({ x, y, t: now });
   }
 
   // ================= Update =================
   let idleT = 0;
   function update(dt) {
-    smoothOthers(dt);
     const now = performance.now();
-    // the server says when walls are gone; this is just a backup cleanup
-    state.walls = state.walls.filter(w => now - w.born < WALL_LIFE + 1000);
+
+    // others glide toward their latest known spot
+    const k = Math.min(1, dt * 12);
+    for (const [id, o] of state.others) {
+      o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k;
+      if (o.dashing) addTrail(id, o.x, o.y, now);
+    }
+
+    // walls: backup cleanup (the server normally tells us)
+    state.walls = state.walls.filter((w) => now - w.born < WALL_LIFE + 1000);
+
+    // bullets fly; they vanish on walls right away so it looks right
+    state.bullets = state.bullets.filter((b) => {
+      if (now - b.born > BULLET_LIFE + 150) return false;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      for (const w of state.walls) if (segDist(b.x, b.y, w) < WALL_HALF + BULLET_RADIUS) {
+        for (let i = 0; i < 4; i++) spark(b.x, b.y, b.color, 0.7);
+        return false;
+      }
+      return true;
+    });
+
+    // particles and rings
+    state.particles = state.particles.filter((q) => {
+      q.age += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.9; q.vy *= 0.9;
+      return q.age < q.life;
+    });
+    state.rings = state.rings.filter((r) => now - r.t < (r.big ? 600 : 400));
+    for (const [id, t] of state.trails) {
+      while (t.length && now - t[0].t > 260) t.shift();
+      if (!t.length) state.trails.delete(id);
+    }
+
+    state.hurtFlash = Math.max(0, state.hurtFlash - dt * 2.5);
+
     if (state.screen === "game" && state.player) {
       const p = state.player;
       const { dx, dy } = getMoveDirection();
-      sendInput(dx, dy);
-      // move locally right away (prediction) so controls feel instant
-      p.x += dx * PLAYER_SPEED * dt;
-      p.y += dy * PLAYER_SPEED * dt;
-      // bump into drawn walls that are still solid
-      resolveWalls(p, state.walls, p.r);
-      // keep inside the arena walls
+      const wantSprint = state.keys.has("ShiftLeft") || state.keys.has("ShiftRight");
+      sendInput(dx, dy, wantSprint);
+
+      if (now < state.dashUntil) {
+        // dashing: zoom straight ahead, through walls
+        p.x += state.dashDir.x * DASH_SPEED * dt;
+        p.y += state.dashDir.y * DASH_SPEED * dt;
+        addTrail("me", p.x, p.y, now);
+      } else {
+        let speed = PLAYER_SPEED;
+        if (wantSprint && (dx || dy) && !state.exhausted && state.stamina > 0) {
+          speed *= SPRINT_MULT;
+          state.stamina = Math.max(0, state.stamina - STAMINA_DRAIN * dt); // smooth bar between server updates
+        }
+        p.x += dx * speed * dt;
+        p.y += dy * speed * dt;
+        resolveWalls(p, state.walls, p.r);
+      }
       p.x = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.x));
       p.y = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.y));
-      // smooth camera follow
+
       const t = Math.min(1, dt * 10);
       state.camera.x += (p.x - state.camera.x) * t;
       state.camera.y += (p.y - state.camera.y) * t;
+
       handleDrawing();
-      // ease the red hint in and out
-      const target = state.outOfRange ? 1 : 0;
-      state.rangeHint += (target - state.rangeHint) * Math.min(1, dt * 12);
+      handleShooting(now);
+      state.rangeHint += ((state.outOfRange ? 1 : 0) - state.rangeHint) * Math.min(1, dt * 12);
+      updateHud(now);
     } else if (!reducedMotion) {
-      // slow drift behind the menu
       idleT += dt;
       state.camera.x = WORLD_SIZE / 2 + Math.cos(idleT * 0.08) * 500;
       state.camera.y = WORLD_SIZE / 2 + Math.sin(idleT * 0.11) * 400;
     }
   }
 
+  function updateHud(now) {
+    const hp = Math.max(0, Math.min(HP_MAX, state.hp));
+    hpFill.style.width = (hp / HP_MAX) * 100 + "%";
+    hpText.textContent = Math.ceil(hp);
+
+    sprintFill.style.width = (state.stamina / STAMINA_MAX) * 100 + "%";
+    sprintFill.classList.toggle("tired", state.exhausted);
+
+    const left = Math.max(0, state.dashReadyAt - now);
+    const ready = left <= 0;
+    dashCd.style.setProperty("--cd", ready ? "0turn" : (left / DASH_COOLDOWN) + "turn");
+    dashNum.textContent = ready ? "" : Math.ceil(left / 1000);
+    dashRing.classList.toggle("cooling", !ready);
+    if (ready && !state.wasReady) {
+      dashRing.classList.remove("ready-pop"); void dashRing.offsetWidth; dashRing.classList.add("ready-pop");
+    }
+    state.wasReady = ready;
+  }
+
   // ================= Render =================
   const view = { w: 0, h: 0, dpr: 1 };
   let colors = {};
-
   function readTheme() {
     const s = getComputedStyle(document.documentElement);
     colors = {
-      arena: s.getPropertyValue("--arena").trim(),
-      grid: s.getPropertyValue("--grid").trim(),
-      outside: s.getPropertyValue("--outside").trim(),
-      panel: s.getPropertyValue("--panel").trim(),
-      ink: s.getPropertyValue("--ink").trim(),
+      arena: s.getPropertyValue("--arena").trim(), grid: s.getPropertyValue("--grid").trim(),
+      outside: s.getPropertyValue("--outside").trim(), ink: s.getPropertyValue("--ink").trim(),
     };
   }
-
   function resize() {
     view.dpr = Math.min(window.devicePixelRatio || 1, 2);
-    view.w = window.innerWidth;
-    view.h = window.innerHeight;
-    canvas.width = view.w * view.dpr;
-    canvas.height = view.h * view.dpr;
-    mini.width = 130 * view.dpr;
-    mini.height = 130 * view.dpr;
+    view.w = window.innerWidth; view.h = window.innerHeight;
+    canvas.width = view.w * view.dpr; canvas.height = view.h * view.dpr;
+    const ms = mini.getBoundingClientRect().width || 130;
+    mini.width = ms * view.dpr; mini.height = ms * view.dpr;
   }
-
   function darken(hex, amt = 0.72) {
     const n = parseInt(hex.replace("#", ""), 16);
-    const r = Math.round(((n >> 16) & 255) * amt);
-    const g = Math.round(((n >> 8) & 255) * amt);
-    const b = Math.round((n & 255) * amt);
-    return `rgb(${r},${g},${b})`;
+    return `rgb(${Math.round(((n >> 16) & 255) * amt)},${Math.round(((n >> 8) & 255) * amt)},${Math.round((n & 255) * amt)})`;
   }
-
-  function drawPlayer(p, sx, sy) {
-    ctx.beginPath();
-    ctx.arc(sx, sy, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = p.color;
-    ctx.fill();
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = darken(p.color);
-    ctx.stroke();
-
-    const size = Math.max(12, p.r * 0.5);
-    ctx.font = `600 ${size}px Fredoka, "Trebuchet MS", sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = "rgba(0,0,0,0.55)";
-    ctx.lineJoin = "round";
-    ctx.strokeText(p.name, sx, sy);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(p.name, sx, sy);
-
-    // ink bar under the player
-    if (typeof p.ink === "number") {
-      const bw = 56, bh = 7, bx = sx - bw / 2, by = sy + p.r + 9;
-      const frac = Math.max(0, Math.min(1, p.ink / 100));
-      ctx.fillStyle = "rgba(0,0,0,0.25)";
-      roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 5); ctx.fill();
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      roundRect(bx, by, bw, bh, 3.5); ctx.fill();
-      if (frac > 0) { ctx.fillStyle = p.color; roundRect(bx, by, bw * frac, bh, 3.5); ctx.fill(); }
-    }
-  }
-
   function roundRect(x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
     ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
 
-  function drawWalls(ox, oy) {
-    const now = performance.now();
+  function drawPlayer(p, sx, sy, opts = {}) {
+    // stretch along the dash direction for a speedy look
+    ctx.save();
+    ctx.translate(sx, sy);
+    if (opts.stretch) { ctx.rotate(opts.stretch); ctx.scale(1.35, 0.8); }
+    ctx.beginPath();
+    ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = p.color; ctx.fill();
+    ctx.lineWidth = 5; ctx.strokeStyle = darken(p.color); ctx.stroke();
+    ctx.restore();
+
+    const size = Math.max(12, p.r * 0.5);
+    ctx.font = `600 ${size}px Fredoka, "Trebuchet MS", sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineWidth = 3.5; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.strokeText(p.name, sx, sy);
+    ctx.fillStyle = "#fff"; ctx.fillText(p.name, sx, sy);
+
+    // health bar above other players
+    if (opts.showHp && typeof p.hp === "number") {
+      const bw = 56, bh = 6, bx = sx - bw / 2, by = sy - p.r - 16;
+      ctx.fillStyle = "rgba(0,0,0,0.35)"; roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 4); ctx.fill();
+      ctx.fillStyle = "#dc2626"; roundRect(bx, by, bw * Math.max(0, p.hp / HP_MAX), bh, 3); ctx.fill();
+    }
+    // ink bar under the player
+    if (typeof p.ink === "number") {
+      const bw = 56, bh = 7, bx = sx - bw / 2, by = sy + p.r + 9;
+      const frac = Math.max(0, Math.min(1, p.ink / 100));
+      ctx.fillStyle = "rgba(0,0,0,0.25)"; roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 5); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.85)"; roundRect(bx, by, bw, bh, 3.5); ctx.fill();
+      if (frac > 0) { ctx.fillStyle = p.color; roundRect(bx, by, bw * frac, bh, 3.5); ctx.fill(); }
+    }
+  }
+
+  function drawTrail(id, color, ox, oy, now) {
+    const t = state.trails.get(id);
+    if (!t || t.length < 2) return;
+    // speed streaks
+    const a = t[0], b = t[t.length - 1];
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    const nx = -Math.sin(ang), ny = Math.cos(ang);
     ctx.lineCap = "round";
-    ctx.lineWidth = WALL_HALF * 2;
-    for (const w of state.walls) {
-      const age = now - w.born;
-      const fadeStart = WALL_LIFE - WALL_FADE;
-      const alpha = age < fadeStart ? 1 : Math.max(0.15, 1 - (age - fadeStart) / WALL_FADE);
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = darken(w.color, 0.85);
+    for (let i = -2; i <= 2; i++) {
+      const off = i * 13;
+      ctx.globalAlpha = 0.6 - Math.abs(i) * 0.14;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(w.x1 + ox, w.y1 + oy);
-      ctx.lineTo(w.x2 + ox, w.y2 + oy);
+      ctx.moveTo(a.x + nx * off + ox, a.y + ny * off + oy);
+      ctx.lineTo(b.x + nx * off - Math.cos(ang) * 40 + ox, b.y + ny * off - Math.sin(ang) * 40 + oy);
       ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // afterimages
+    for (let i = 0; i < t.length; i += 2) {
+      const age = (now - t[i].t) / 260;
+      ctx.globalAlpha = Math.max(0, 0.45 * (1 - age));
+      ctx.beginPath();
+      ctx.arc(t[i].x + ox, t[i].y + oy, PLAYER_RADIUS * (1 - age * 0.3), 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
 
   function render() {
     const { w, h, dpr } = view;
+    const now = performance.now();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const ox = w / 2 - state.camera.x, oy = h / 2 - state.camera.y;
 
-    // world -> screen offset (camera centered)
-    const ox = w / 2 - state.camera.x;
-    const oy = h / 2 - state.camera.y;
+    ctx.fillStyle = colors.outside; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = colors.arena; ctx.fillRect(ox, oy, WORLD_SIZE, WORLD_SIZE);
 
-    // outside the walls
-    ctx.fillStyle = colors.outside;
-    ctx.fillRect(0, 0, w, h);
-
-    // arena floor
-    ctx.fillStyle = colors.arena;
-    ctx.fillRect(ox, oy, WORLD_SIZE, WORLD_SIZE);
-
-    // grid (only the visible part)
-    ctx.strokeStyle = colors.grid;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    const left = Math.max(0, Math.floor(-ox / GRID) * GRID);
-    const right = Math.min(WORLD_SIZE, left + w + GRID * 2);
-    const top = Math.max(0, Math.floor(-oy / GRID) * GRID);
-    const bottom = Math.min(WORLD_SIZE, top + h + GRID * 2);
-    for (let x = left; x <= right; x += GRID) {
-      ctx.moveTo(x + ox, Math.max(0, oy)); ctx.lineTo(x + ox, Math.min(h, oy + WORLD_SIZE));
-    }
-    for (let y = top; y <= bottom; y += GRID) {
-      ctx.moveTo(Math.max(0, ox), y + oy); ctx.lineTo(Math.min(w, ox + WORLD_SIZE), y + oy);
-    }
+    ctx.strokeStyle = colors.grid; ctx.lineWidth = 1.5; ctx.beginPath();
+    const left = Math.max(0, Math.floor(-ox / GRID) * GRID), right = Math.min(WORLD_SIZE, left + w + GRID * 2);
+    const top = Math.max(0, Math.floor(-oy / GRID) * GRID), bottom = Math.min(WORLD_SIZE, top + h + GRID * 2);
+    for (let x = left; x <= right; x += GRID) { ctx.moveTo(x + ox, Math.max(0, oy)); ctx.lineTo(x + ox, Math.min(h, oy + WORLD_SIZE)); }
+    for (let y = top; y <= bottom; y += GRID) { ctx.moveTo(Math.max(0, ox), y + oy); ctx.lineTo(Math.min(w, ox + WORLD_SIZE), y + oy); }
     ctx.stroke();
 
-    drawWalls(ox, oy);
+    // walls
+    ctx.lineCap = "round"; ctx.lineWidth = WALL_HALF * 2;
+    for (const wl of state.walls) {
+      const age = now - wl.born, fadeStart = WALL_LIFE - WALL_FADE;
+      ctx.globalAlpha = age < fadeStart ? 1 : Math.max(0.15, 1 - (age - fadeStart) / WALL_FADE);
+      ctx.strokeStyle = darken(wl.color, 0.85);
+      ctx.beginPath(); ctx.moveTo(wl.x1 + ox, wl.y1 + oy); ctx.lineTo(wl.x2 + ox, wl.y2 + oy); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // dash bursts
+    for (const r of state.rings) {
+      const k = (now - r.t) / (r.big ? 600 : 400);
+      ctx.beginPath();
+      ctx.arc(r.x + ox, r.y + oy, PLAYER_RADIUS + k * (r.big ? 110 : 70), 0, Math.PI * 2);
+      ctx.lineWidth = 6 * (1 - k); ctx.strokeStyle = r.color; ctx.globalAlpha = 1 - k; ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // trails, then players
+    for (const [id, o] of state.others) drawTrail(id, o.color, ox, oy, now);
+    if (state.player) drawTrail("me", state.player.color, ox, oy, now);
 
     for (const o of state.others.values()) {
-      drawPlayer({ x: o.x, y: o.y, r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink }, o.x + ox, o.y + oy);
+      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink, hp: o.hp }, o.x + ox, o.y + oy, { showHp: true });
     }
-    if (state.player) drawPlayer(state.player, state.player.x + ox, state.player.y + oy);
-
-    // red tint over everything outside your drawing circle
-    if (state.player && state.drawing) {
-      // faint ring so you can see your drawing range while you draw
-      const cx = state.player.x + ox, cy = state.player.y + oy;
-      ctx.beginPath();
-      ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
-      ctx.setLineDash([10, 10]);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "rgba(128, 128, 128, 0.35)";
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    if (state.player && state.rangeHint > 0.01) {
-      const cx = state.player.x + ox, cy = state.player.y + oy;
-      ctx.beginPath();
-      ctx.rect(0, 0, w, h);
-      ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2, true);
-      ctx.fillStyle = `rgba(230, 40, 40, ${0.28 * state.rangeHint})`;
-      ctx.fill("evenodd");
-      ctx.beginPath();
-      ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = `rgba(230, 40, 40, ${0.7 * state.rangeHint})`;
-      ctx.stroke();
+    if (state.player) {
+      const dashing = now < state.dashUntil;
+      drawPlayer(state.player, state.player.x + ox, state.player.y + oy,
+        { stretch: dashing ? Math.atan2(state.dashDir.y, state.dashDir.x) : 0 });
     }
 
-    if (state.screen === "game") renderMinimap();
+    // bullets
+    for (const b of state.bullets) {
+      ctx.beginPath();
+      ctx.arc(b.x + ox, b.y + oy, BULLET_RADIUS + 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = darken(b.color, 0.6); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(b.x + ox, b.y + oy, BULLET_RADIUS - 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = b.color; ctx.fill();
+    }
+
+    // sparks
+    for (const q of state.particles) {
+      ctx.globalAlpha = 1 - q.age / q.life;
+      ctx.fillStyle = q.color;
+      ctx.beginPath(); ctx.arc(q.x + ox, q.y + oy, q.size, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // drawing range: dashed ring while drawing, red outside when you go past it
+    if (state.player) {
+      const cx = state.player.x + ox, cy = state.player.y + oy;
+      if (state.drawing) {
+        ctx.beginPath(); ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
+        ctx.setLineDash([10, 10]); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(128,128,128,0.35)"; ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (state.rangeHint > 0.01) {
+        ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2, true);
+        ctx.fillStyle = `rgba(230,40,40,${0.28 * state.rangeHint})`; ctx.fill("evenodd");
+        ctx.beginPath(); ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
+        ctx.lineWidth = 2; ctx.strokeStyle = `rgba(230,40,40,${0.7 * state.rangeHint})`; ctx.stroke();
+      }
+    }
+
+    // red vignette: stronger as your health drops, flashes when you get hit
+    if (state.screen === "game") {
+      const missing = 1 - Math.max(0, state.hp) / HP_MAX;
+      let strength = Math.min(1, missing * 1.15) * 0.75;
+      if (state.hp < 30 && !reducedMotion) strength += 0.08 * (1 + Math.sin(now / 180));
+      strength = Math.min(0.95, strength + state.hurtFlash * 0.35);
+      if (strength > 0.01) {
+        const inner = Math.min(w, h) * (0.5 - missing * 0.22);
+        const g = ctx.createRadialGradient(w / 2, h / 2, inner, w / 2, h / 2, Math.hypot(w, h) / 2);
+        g.addColorStop(0, "rgba(200,0,0,0)");
+        g.addColorStop(1, `rgba(200,0,0,${strength})`);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      }
+      renderMinimap();
+    }
   }
 
   function renderMinimap() {
-    const size = 130, pad = 8, dpr = view.dpr;
-    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const size = mini.width / view.dpr, pad = 8;
+    mctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     mctx.clearRect(0, 0, size, size);
     const scale = (size - pad * 2) / WORLD_SIZE;
-    mctx.fillStyle = colors.arena;
-    mctx.fillRect(pad, pad, size - pad * 2, size - pad * 2);
+    mctx.fillStyle = colors.arena; mctx.fillRect(pad, pad, size - pad * 2, size - pad * 2);
     for (const o of state.others.values()) {
-      mctx.beginPath();
-      mctx.arc(pad + o.x * scale, pad + o.y * scale, 3, 0, Math.PI * 2);
-      mctx.fillStyle = o.color;
-      mctx.fill();
+      mctx.beginPath(); mctx.arc(pad + o.x * scale, pad + o.y * scale, 3, 0, Math.PI * 2);
+      mctx.fillStyle = o.color; mctx.fill();
     }
-    const p = state.player;
-    if (!p) return;
-    mctx.beginPath();
-    mctx.arc(pad + p.x * scale, pad + p.y * scale, 4, 0, Math.PI * 2);
-    mctx.fillStyle = p.color;
-    mctx.fill();
-    mctx.lineWidth = 1.5;
-    mctx.strokeStyle = colors.ink;
-    mctx.stroke();
+    const p = state.player; if (!p) return;
+    mctx.beginPath(); mctx.arc(pad + p.x * scale, pad + p.y * scale, 4, 0, Math.PI * 2);
+    mctx.fillStyle = p.color; mctx.fill(); mctx.lineWidth = 1.5; mctx.strokeStyle = colors.ink; mctx.stroke();
   }
 
   // ================= Loop =================
   let last = performance.now();
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); // cap so a tab switch doesn't teleport you
+    const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     update(dt);
     render();
@@ -763,7 +983,7 @@
   // ================= Boot =================
   const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   let reducedMotion = motionQuery.matches;
-  motionQuery.addEventListener?.("change", e => { reducedMotion = e.matches; });
+  motionQuery.addEventListener?.("change", (e) => { reducedMotion = e.matches; });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", readTheme);
   new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   window.addEventListener("resize", resize);
@@ -775,7 +995,6 @@
   updateCounts();
   readTheme();
   resize();
-  canvas.tabIndex = -1;
   nameInput.focus();
   requestAnimationFrame(frame);
 })();
