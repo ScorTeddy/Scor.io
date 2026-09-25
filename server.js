@@ -13,7 +13,7 @@ const { Server } = require("socket.io");
 // ---------------- Settings (keep these in sync with index.html) ----------------
 const PORT = process.env.PORT || 3000;
 const WORLD_SIZE = 4500;      // the arena is WORLD_SIZE x WORLD_SIZE
-const OBSTACLE_COUNT = 55;    // random rocks and blocks scattered around
+const OBSTACLE_COUNT = 28;    // random rocks and blocks scattered around
 const SPAWN_MARGIN = 250;     // keep spawns away from the arena edge
 const PLAYER_RADIUS = 30;
 const PLAYER_SPEED = 320;     // pixels per second
@@ -51,8 +51,8 @@ const KILL_HEAL = 0.9;        // fraction of your max health you get back for a 
 const UPGRADES = {
   maxhp:    { name: "Tough Skin",      desc: "+20 max health",           max: 5, apply: (p) => { p.maxHp += 20; p.hp += 20; } },
   regen:    { name: "Regeneration",    desc: "+0.75 health per second",  max: 3, apply: (p) => { p.regen += 0.75; } },
-  damage:   { name: "Sharper Shots",   desc: "+2 bullet damage",         max: 3, apply: (p) => { p.dmg += 2; } },
-  firerate: { name: "Quick Trigger",   desc: "Shoot 8% faster",          max: 3, apply: (p) => { p.fireMs = Math.round(p.fireMs * 0.92); } },
+  damage:   { name: "Sharper Shots",   desc: "+1 bullet damage",         max: 3, apply: (p) => { p.dmg += 1; } },
+  firerate: { name: "Quick Trigger",   desc: "Shoot 5% faster",          max: 3, apply: (p) => { p.fireMs = Math.round(p.fireMs * 0.95); } },
   bullet:   { name: "Velocity",        desc: "Bullets fly 12% faster",   max: 3, apply: (p) => { p.bulletSpeed *= 1.12; } },
   reach:    { name: "Long Arm",        desc: "+50 drawing reach",        max: 4, apply: (p) => { p.drawRange += 50; } },
   ink:      { name: "Bigger Tank",     desc: "+120 ink",                 max: 4, apply: (p) => { p.inkMax += 120; p.ink += 120; } },
@@ -62,7 +62,19 @@ const UPGRADES = {
   dash:     { name: "Quick Recharge",  desc: "Dash cooldown -1.5s",      max: 4, apply: (p) => { p.dashCooldown -= 1500; } },
 };
 
-function makeOffer(p) {
+// ---------------- Classes (picked in the menu or on the death screen) ----------------
+// Every class trades something for its strength. Damage per second stays close
+// for all of them: Soldier 75, Gunner 78, Sniper 70, Artist 69.
+const CLASSES = {
+  soldier: { name: "Soldier", apply: () => {} },
+  tank:    { name: "Tank",    apply: (p) => { p.maxHp = Math.round(p.maxHp * 1.2); p.speedMult -= 0.08; } },
+  artist:  { name: "Artist",  apply: (p) => { p.inkMax = Math.round(p.inkMax * 1.2); p.drawRange += 30; p.dmg -= 1; } },
+  sniper:  { name: "Sniper",  apply: (p) => { p.dmg += 3; p.bulletSpeed *= 1.3; p.fireMs = Math.round(p.fireMs * 1.35); } },
+  scout:   { name: "Scout",   apply: (p) => { p.speedMult += 0.12; p.staminaMax += 25; p.dashCooldown -= 2000; p.maxHp = Math.round(p.maxHp * 0.85); } },
+  gunner:  { name: "Gunner",  apply: (p) => { p.fireMs = Math.round(p.fireMs * 0.8); p.dmg -= 2; p.bulletSpeed *= 0.9; } },
+};
+
+function makeOffer(p, mercy = false) {
   const options = Object.keys(UPGRADES).filter((k) => (p.levels[k] || 0) < UPGRADES[k].max);
   for (let i = options.length - 1; i > 0; i--) {           // shuffle
     const j = Math.floor(Math.random() * (i + 1));
@@ -71,7 +83,7 @@ function makeOffer(p) {
   p.offer = options.slice(0, 3);
   if (!p.offer.length) { p.offer = null; p.pendingPicks = 0; return; }
   io.to(p.id).emit("offer", {
-    pending: p.pendingPicks,
+    pending: p.pendingPicks, mercy,
     cards: p.offer.map((k) => ({ key: k, name: UPGRADES[k].name, desc: UPGRADES[k].desc, level: p.levels[k] || 0, max: UPGRADES[k].max })),
   });
 }
@@ -234,8 +246,9 @@ io.on("connection", (socket) => {
     const name = typeof data?.name === "string" ? data.name.trim().slice(0, 16) : "";
     if (!name) return;
     const color = typeof data?.color === "string" && HEX.test(data.color) ? data.color : "#3b82f6";
+    const cls = CLASSES[data?.cls] ? data.cls : "soldier";
     const p = {
-      id: socket.id, name, color,
+      id: socket.id, name, color, cls,
       x: 0, y: 0, aim: 0,
       dx: 0, dy: 0, sprint: false,
       stamina: STAMINA_MAX, lastSprint: 0, exhausted: false,
@@ -248,13 +261,19 @@ io.on("connection", (socket) => {
       staminaMax: STAMINA_MAX, dashCooldown: DASH_COOLDOWN,
       levels: {}, kills: 0, offer: null, pendingPicks: 0,
     };
+    CLASSES[cls].apply(p);
+    p.hp = p.maxHp; p.ink = p.inkMax; p.stamina = p.staminaMax;
     const spot = spawnPoint();
     p.x = spot.x; p.y = spot.y;
     players.set(socket.id, p);
     sendStats(p);
+    // mercy: died twice in a row without any upgrades? start with a free pick
+    const mercy = (socket.data.dryDeaths || 0) >= 2;
+    if (mercy) { socket.data.dryDeaths = 0; p.pendingPicks = 1; }
     socket.emit("welcome", { id: socket.id, x: p.x, y: p.y });
     const now = Date.now();
     socket.emit("walls", walls.map((w) => ({ id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, color: w.color, life: w.life, age: now - w.born })));
+    if (mercy) makeOffer(p, true);
   });
 
   socket.on("pick", (data) => {
@@ -427,7 +446,14 @@ setInterval(() => {
     if (!p || p.hp > 0) continue;
     const killer = players.get(h.by);
     players.delete(p.id);
-    io.to(p.id).emit("died", { by: killer ? killer.name : "someone", kills: p.kills });
+    const victimSocket = io.sockets.sockets.get(p.id);
+    let mercyNext = false;
+    if (victimSocket) {
+      const hadUpgrades = Object.keys(p.levels).length > 0;
+      victimSocket.data.dryDeaths = hadUpgrades ? 0 : (victimSocket.data.dryDeaths || 0) + 1;
+      mercyNext = victimSocket.data.dryDeaths >= 2;
+    }
+    io.to(p.id).emit("died", { by: killer ? killer.name : "someone", kills: p.kills, mercy: mercyNext });
     if (killer) {
       killer.kills++;
       const heal = Math.round(killer.maxHp * KILL_HEAL);
@@ -442,7 +468,7 @@ setInterval(() => {
 
   io.emit("state", {
     players: [...players.values()].map((p) => ({
-      id: p.id, name: p.name, color: p.color,
+      id: p.id, name: p.name, color: p.color, cls: p.cls,
       x: Math.round(p.x), y: Math.round(p.y),
       ink: Math.round((p.ink / p.inkMax) * 100),
       hp: Math.max(0, Math.round(p.hp)), maxHp: p.maxHp,

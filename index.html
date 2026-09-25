@@ -68,17 +68,19 @@
     margin: 0; font-size: 2.75rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
   }
   h1 .dot { color: var(--ink-soft); }
-  .preview {
-    width: 7.5rem; height: 7.5rem; border-radius: 50%;
-    display: grid; place-items: center;
-    border: 6px solid rgba(0,0,0,0.18);
-    transition: background-color 150ms ease;
+  #preview { width: 140px; height: 150px; display: block; }
+  .classes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; margin-top: 0.4rem; }
+  .class-btn {
+    font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--ink); cursor: pointer;
+    background: var(--arena); border: 2px solid var(--panel-edge); border-radius: 0.9rem;
+    padding: 0.3rem 0.2rem 0.35rem; display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
   }
-  .preview span {
-    color: #fff; font-weight: 600; font-size: 1.05rem; max-width: 6rem;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    text-shadow: 0 0 3px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.5);
-  }
+  .class-btn canvas { width: 44px; height: 44px; }
+  .class-btn[aria-pressed="true"] { border-color: var(--ink); background: var(--panel); }
+  .class-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .class-desc { margin: 0.45rem 0 0; font-size: 0.88rem; color: var(--ink-soft); min-height: 2.4em; text-align: center; }
+  .mercy { margin: 0; font-size: 0.92rem; color: #0369a1; font-weight: 600; }
+  .mercy.hidden { display: none; }
   .field { width: 100%; display: flex; flex-direction: column; gap: 0.4rem; }
   label, .legend { font-size: 0.95rem; font-weight: 500; color: var(--ink-soft); }
   input[type="text"] {
@@ -151,7 +153,7 @@
   }
   .hud-tip #count { margin-left: 0.6rem; color: var(--ink); font-weight: 500; }
   @media (prefers-reduced-motion: reduce) {
-    .preview, #play, .swatch { transition: none; }
+    #play, .swatch { transition: none; }
   }
 
   /* ---------- Health, sprint, dash ---------- */
@@ -268,11 +270,12 @@
   }
   .toast.show { opacity: 1; }
   #death {
-    position: fixed; inset: 0; display: grid; place-items: center; padding: 1.5rem;
+    position: fixed; inset: 0; display: grid; place-items: center; padding: 1.5rem; overflow-y: auto;
     background: rgba(90, 0, 0, 0.35);
   }
   #death.hidden { display: none; }
-  .death-card { text-align: center; gap: 0.9rem; }
+  .death-card { text-align: center; gap: 0.8rem; }
+  .death-card fieldset { text-align: left; }
   .death-card h2 { margin: 0; font-size: 2.2rem; line-height: 1; color: #dc2626; }
   .death-card p { margin: 0; color: var(--ink-soft); font-size: 1.05rem; }
   .death-card strong { color: var(--ink); }
@@ -307,7 +310,7 @@
   <form class="card" id="menuForm" novalidate>
     <h1>circle<span class="dot">.io</span></h1>
 
-    <div class="preview" id="preview" aria-hidden="true"><span id="previewName">you</span></div>
+    <canvas id="preview" aria-hidden="true"></canvas>
 
     <div class="field">
       <label for="name">Your name</label>
@@ -318,6 +321,12 @@
     <fieldset>
       <legend class="legend">Your color</legend>
       <div class="swatches" id="swatches"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend class="legend">Your class</legend>
+      <div class="classes" data-classes></div>
+      <p class="class-desc" data-class-desc></p>
     </fieldset>
 
     <button type="submit" id="play">Play</button>
@@ -368,6 +377,12 @@
     <h2>Eliminated</h2>
     <p>by <strong id="killerName">someone</strong></p>
     <p>Kills this life: <strong id="deathKills">0</strong></p>
+    <p class="mercy hidden" id="mercyNote">Tough luck! Your next life starts with a free upgrade.</p>
+    <fieldset>
+      <legend class="legend">Class for next life</legend>
+      <div class="classes" data-classes></div>
+      <p class="class-desc" data-class-desc></p>
+    </fieldset>
     <button type="button" id="respawn" class="respawn-btn">Respawn</button>
     <button type="button" class="link-btn" id="toMenu">Main menu</button>
   </div>
@@ -406,6 +421,16 @@
   const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
                   "#3b82f6", "#8b5cf6", "#ec4899", "#64748b"];
   const HEX = /^#[0-9a-fA-F]{6}$/;
+
+  // Classes: the real numbers live in server.js, these are just for the menu
+  const CLASSES = [
+    { key: "soldier", name: "Soldier", desc: "Balanced. Good at everything, great at nothing." },
+    { key: "tank",    name: "Tank",    desc: "+20% health, but 8% slower." },
+    { key: "artist",  name: "Artist",  desc: "+20% ink and +30 drawing reach, but -1 damage." },
+    { key: "sniper",  name: "Sniper",  desc: "+3 damage and 30% faster bullets, but shoots slower." },
+    { key: "scout",   name: "Scout",   desc: "12% faster, more stamina, dash every 8s, but -15% health." },
+    { key: "gunner",  name: "Gunner",  desc: "Shoots 25% faster, but -2 damage." },
+  ];
   // your current stats (the server sends new ones when you upgrade)
   const BASE_STATS = { maxHp: HP_MAX, speedMult: 1, drawRange: DRAW_RANGE, inkMax: INK_MAX,
     fireMs: FIRE_MS, dashCooldown: DASH_COOLDOWN, staminaMax: STAMINA_MAX, kills: 0 };
@@ -416,7 +441,8 @@
   const mini = $("minimap"), mctx = mini.getContext("2d");
   const menu = $("menu"), hud = $("hud"), form = $("menuForm");
   const nameInput = $("name"), hint = $("hint");
-  const preview = $("preview"), previewName = $("previewName"), swatchBox = $("swatches");
+  const preview = $("preview"), swatchBox = $("swatches");
+  const mercyNote = $("mercyNote");
   const onlineEl = $("online"), countEl = $("count");
   const hpFill = $("hpFill"), hpText = $("hpText");
   const dashRing = $("dashRing"), dashCd = $("dashCd"), dashNum = $("dashNum");
@@ -429,7 +455,7 @@
   // ================= State =================
   const state = {
     screen: "menu",
-    name: "", color: COLORS[5],
+    name: "", color: COLORS[5], cls: "soldier",
     player: null,                 // me: {x, y, r, name, color, ink, hp}
     camera: { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 },
     keys: new Set(),
@@ -457,7 +483,11 @@
 
   try {
     const saved = JSON.parse(localStorage.getItem("circleio") || "null");
-    if (saved) { state.name = saved.name || ""; state.color = HEX.test(saved.color) ? saved.color : state.color; }
+    if (saved) {
+      state.name = saved.name || "";
+      state.color = HEX.test(saved.color) ? saved.color : state.color;
+      if (CLASSES.some((c) => c.key === saved.cls)) state.cls = saved.cls;
+    }
   } catch (e) {}
 
   // ================= Server connection =================
@@ -468,7 +498,7 @@
   socket.on("connect", () => {
     hint.textContent = "";
     if (state.screen === "game" && state.player) {
-      socket.emit("join", { name: state.player.name, color: state.player.color });
+      socket.emit("join", { name: state.player.name, color: state.player.color, cls: state.player.cls });
     }
     updateCounts();
   });
@@ -526,7 +556,7 @@
     state.others.delete(id);
   });
 
-  socket.on("died", ({ by, kills }) => showDeath(String(by).slice(0, 16), kills || 0));
+  socket.on("died", ({ by, kills, mercy }) => showDeath(String(by).slice(0, 16), kills || 0, !!mercy));
 
   socket.on("stats", (st) => {
     state.stats = { ...state.stats, ...st };
@@ -564,6 +594,7 @@
       if (!o) { o = { x: sp.x, y: sp.y }; state.others.set(sp.id, o); }
       o.tx = sp.x; o.ty = sp.y; o.name = sp.name;
       o.color = HEX.test(sp.color) ? sp.color : "#64748b";
+      o.cls = sp.cls;
       o.ink = sp.ink; o.hp = sp.hp; o.maxHp = sp.maxHp || HP_MAX; o.dashing = sp.dashing;
       if (Number.isFinite(sp.aim)) o.targetAim = sp.aim;
     }
@@ -585,11 +616,134 @@
     countEl.textContent = socket.connected ? `${n + (state.screen === "game" ? 1 : 0)} playing` : "reconnecting...";
   }
 
+  // ================= Character drawing =================
+  // A simple "no profile picture" style silhouette: a head on shoulders,
+  // with a different face for each class. Drawn inside the player's hit circle.
+  function drawAvatar(c, x, y, r, color, cls, stretch) {
+    const s = r / 30;
+    c.save();
+    c.translate(x, y);
+    if (stretch) { c.rotate(stretch); c.scale(1.3, 0.82); c.rotate(-stretch); }
+    c.scale(s, s);
+    const edge = darken(color, 0.6);
+    c.lineJoin = "round";
+    // shoulders
+    c.beginPath();
+    c.ellipse(0, 28, 26, 22, 0, Math.PI, 0);
+    c.closePath();
+    c.fillStyle = color; c.fill();
+    c.lineWidth = 3.5; c.strokeStyle = edge; c.stroke();
+    // head
+    c.beginPath(); c.arc(0, -9, 14, 0, Math.PI * 2);
+    c.fillStyle = color; c.fill(); c.stroke();
+    drawFace(c, cls, color);
+    c.restore();
+  }
+
+  function drawFace(c, cls, color) {
+    const ink = "rgba(0,0,0,0.72)";
+    c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = 2; c.lineCap = "round";
+    const dot = (x, y, r) => { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); };
+    const line = (x1, y1, x2, y2) => { c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); };
+    switch (cls) {
+      case "tank":      // stern brows and a frown
+        line(-9, -17, -2, -14); line(9, -17, 2, -14);
+        dot(-5, -11, 1.9); dot(5, -11, 1.9);
+        c.beginPath(); c.arc(0, 0.5, 5, 1.2 * Math.PI, 1.8 * Math.PI); c.stroke();
+        break;
+      case "artist":    // happy closed eyes, big smile, little beret
+        c.beginPath(); c.arc(-5, -10, 2.8, Math.PI, 2 * Math.PI); c.stroke();
+        c.beginPath(); c.arc(5, -10, 2.8, Math.PI, 2 * Math.PI); c.stroke();
+        c.beginPath(); c.arc(0, -6, 5, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke();
+        c.save();
+        c.fillStyle = darken(color, 0.45);
+        c.beginPath(); c.ellipse(-3, -22, 12, 4.5, -0.25, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(-3, -27, 2, 0, Math.PI * 2); c.fill();
+        c.restore();
+        break;
+      case "sniper":    // one eye squinting, one behind a scope
+        line(-8, -11, -2, -11);
+        c.beginPath(); c.arc(5, -11, 4.2, 0, Math.PI * 2); c.stroke();
+        dot(5, -11, 1.4);
+        line(-2, -3.5, 3, -4.5);
+        break;
+      case "scout":     // wide eyes, open "whoa" mouth
+        c.save(); c.fillStyle = "#fff";
+        c.beginPath(); c.arc(-5, -11, 3.4, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(5, -11, 3.4, 0, Math.PI * 2); c.fill();
+        c.restore();
+        dot(-5, -11, 1.7); dot(5, -11, 1.7);
+        c.beginPath(); c.ellipse(0, -3, 2.6, 2.2, 0, 0, Math.PI * 2); c.fill();
+        break;
+      case "gunner":    // angry brows, gritted teeth
+        line(-9, -16, -3, -13.5); line(9, -16, 3, -13.5);
+        dot(-5, -10.5, 1.8); dot(5, -10.5, 1.8);
+        c.save(); c.fillStyle = "#fff";
+        c.beginPath(); c.rect(-5, -5.5, 10, 4.5); c.fill(); c.restore();
+        c.lineWidth = 1.5; c.strokeRect(-5, -5.5, 10, 4.5);
+        line(0, -5.5, 0, -1); line(-5, -3.25, 5, -3.25);
+        break;
+      default:          // soldier: calm dots and a straight mouth
+        dot(-5, -11, 1.9); dot(5, -11, 1.9);
+        line(-4, -3.5, 4, -3.5);
+    }
+  }
+
+  // ================= Class picker (menu + death screen) =================
+  const classPickers = [];
+  function buildClassPickers() {
+    document.querySelectorAll("[data-classes]").forEach((box) => {
+      const desc = box.parentElement.querySelector("[data-class-desc]");
+      const buttons = CLASSES.map((cl) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "class-btn"; b.dataset.cls = cl.key;
+        const cv = document.createElement("canvas");
+        cv.width = 88; cv.height = 88;
+        const label = document.createElement("span"); label.textContent = cl.name;
+        b.append(cv, label);
+        b.addEventListener("click", () => setClass(cl.key));
+        box.appendChild(b);
+        return b;
+      });
+      classPickers.push({ buttons, desc });
+    });
+  }
+  function setClass(key) {
+    state.cls = key;
+    const info = CLASSES.find((c) => c.key === key);
+    for (const pk of classPickers) {
+      pk.buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cls === key)));
+      pk.desc.textContent = info.desc;
+    }
+    drawPreviews();
+    try { localStorage.setItem("circleio", JSON.stringify({ name: state.name, color: state.color, cls: state.cls })); } catch (e) {}
+  }
+  function drawPreviews() {
+    // class buttons
+    for (const pk of classPickers) for (const b of pk.buttons) {
+      const cv = b.querySelector("canvas"), c = cv.getContext("2d");
+      c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height);
+      drawAvatar(c, 44, 46, 36, state.color, b.dataset.cls);
+    }
+    // big preview with your name
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    preview.width = 140 * dpr; preview.height = 150 * dpr;
+    const c = preview.getContext("2d");
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, 140, 150);
+    drawAvatar(c, 70, 68, 56, state.color, state.cls);
+    c.font = '600 17px Fredoka, "Trebuchet MS", sans-serif';
+    c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() || "#222";
+    c.fillText(state.name || "you", 70, 138, 136);
+  }
+
   // ================= Upgrades =================
   function showOffer(o) {
     state.offer = o;
     upgradeRow.textContent = "";
-    upgradesTitle.textContent = o.pending > 1 ? `Pick an upgrade (${o.pending} to pick)` : "Pick an upgrade";
+    upgradesTitle.textContent = o.mercy ? "Mercy upgrade: pick one on the house"
+      : o.pending > 1 ? `Pick an upgrade (${o.pending} to pick)` : "Pick an upgrade";
     o.cards.forEach((c, i) => {
       const b = document.createElement("button");
       b.type = "button"; b.className = "upgrade-card";
@@ -630,7 +784,8 @@
   }
 
   // ================= Death + respawn =================
-  function showDeath(by, kills) {
+  function showDeath(by, kills, mercy) {
+    mercyNote.classList.toggle("hidden", !mercy);
     state.screen = "dead";
     if (state.player) state.rings.push({ x: state.player.x, y: state.player.y, t: performance.now(), color: state.player.color, big: true });
     state.player = null;
@@ -670,13 +825,13 @@
   }
   function setColor(c) {
     state.color = c;
-    preview.style.backgroundColor = c;
+    drawPreviews();
     swatchBox.querySelectorAll(".swatch").forEach((s) => s.setAttribute("aria-pressed", String(s.dataset.color === c)));
     swatchBox.querySelector(".custom").classList.toggle("active", !COLORS.includes(c));
   }
   function updateName() {
     state.name = nameInput.value.trim();
-    previewName.textContent = state.name || "you";
+    drawPreviews();
   }
   nameInput.addEventListener("input", () => { updateName(); if (state.name) hint.textContent = ""; });
   form.addEventListener("submit", (e) => {
@@ -689,8 +844,8 @@
 
   // ================= Game flow =================
   function startGame() {
-    try { localStorage.setItem("circleio", JSON.stringify({ name: state.name, color: state.color })); } catch (e) {}
-    state.player = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, r: PLAYER_RADIUS, name: state.name, color: state.color, ink: 100, hp: HP_MAX };
+    try { localStorage.setItem("circleio", JSON.stringify({ name: state.name, color: state.color, cls: state.cls })); } catch (e) {}
+    state.player = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, r: PLAYER_RADIUS, name: state.name, color: state.color, cls: state.cls, ink: 100, hp: HP_MAX };
     Object.assign(state, {
       screen: "game", myInk: INK_MAX, hp: HP_MAX, stamina: STAMINA_MAX, exhausted: false,
       dashUntil: 0, dashReadyAt: 0, lastLocalDash: -1e9, hurtFlash: 0, wasReady: true,
@@ -703,7 +858,7 @@
     state.keys.clear();
     lastInput = "";
     hint.textContent = "";
-    socket.emit("join", { name: state.name, color: state.color });
+    socket.emit("join", { name: state.name, color: state.color, cls: state.cls });
     canvas.classList.add("drawable");
     menu.classList.add("hidden");
     hud.classList.remove("hidden");
@@ -1129,26 +1284,18 @@
 
   function drawPlayer(p, sx, sy, opts = {}) {
     if (opts.aim !== undefined) drawGun(p, sx, sy, opts.aim, opts.firedAt, opts.now);
-    // stretch along the dash direction for a speedy look
-    ctx.save();
-    ctx.translate(sx, sy);
-    if (opts.stretch) { ctx.rotate(opts.stretch); ctx.scale(1.35, 0.8); }
-    ctx.beginPath();
-    ctx.arc(0, 0, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = p.color; ctx.fill();
-    ctx.lineWidth = 5; ctx.strokeStyle = darken(p.color); ctx.stroke();
-    ctx.restore();
+    drawAvatar(ctx, sx, sy, p.r, p.color, p.cls, opts.stretch);
 
-    const size = Math.max(12, p.r * 0.5);
-    ctx.font = `600 ${size}px Fredoka, "Trebuchet MS", sans-serif`;
+    // name above the head
+    ctx.font = `600 14px Fredoka, "Trebuchet MS", sans-serif`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.lineWidth = 3.5; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(0,0,0,0.55)";
-    ctx.strokeText(p.name, sx, sy);
-    ctx.fillStyle = "#fff"; ctx.fillText(p.name, sx, sy);
+    ctx.strokeText(p.name, sx, sy - p.r - 9);
+    ctx.fillStyle = "#fff"; ctx.fillText(p.name, sx, sy - p.r - 9);
 
-    // health bar above other players
+    // health bar above other players' names
     if (opts.showHp && typeof p.hp === "number") {
-      const bw = 56, bh = 6, bx = sx - bw / 2, by = sy - p.r - 16;
+      const bw = 56, bh = 6, bx = sx - bw / 2, by = sy - p.r - 29;
       ctx.fillStyle = "rgba(0,0,0,0.35)"; roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 4); ctx.fill();
       ctx.fillStyle = "#dc2626"; roundRect(bx, by, bw * Math.max(0, Math.min(1, p.hp / (p.maxHp || HP_MAX))), bh, 3); ctx.fill();
     }
@@ -1247,7 +1394,7 @@
     if (state.player) drawTrail("me", state.player.color, ox, oy, now);
 
     for (const [id, o] of state.others) {
-      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink, hp: o.hp, maxHp: o.maxHp }, o.x + ox, o.y + oy,
+      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, cls: o.cls, ink: o.ink, hp: o.hp, maxHp: o.maxHp }, o.x + ox, o.y + oy,
         { showHp: true, aim: o.aim || 0, firedAt: state.recoil.get(id), now });
     }
     if (state.player) {
@@ -1370,6 +1517,8 @@
   window.addEventListener("resize", resize);
 
   buildSwatches();
+  buildClassPickers();
+  setClass(state.cls);
   nameInput.value = state.name;
   updateName();
   setColor(state.color);
