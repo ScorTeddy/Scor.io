@@ -108,6 +108,12 @@
     transition: transform 80ms ease, box-shadow 80ms ease;
   }
   #play:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.2); }
+  .respawn-btn {
+    width: 100%; min-width: 16rem; font: inherit; font-size: 1.35rem; font-weight: 600;
+    padding: 0.8rem; border: 0; border-radius: 1.25rem; cursor: pointer;
+    background: var(--play); color: var(--play-ink); box-shadow: 0 5px 0 rgba(0,0,0,0.2);
+  }
+  .respawn-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.2); }
   .controls { margin: 0; font-size: 0.85rem; color: var(--ink-soft); text-align: center; }
   kbd {
     font-family: inherit; font-weight: 600; font-size: 0.8rem;
@@ -198,6 +204,67 @@
   }
   .sprint-fill { height: 100%; width: 100%; background: #f5b301; border-radius: 999px; }
   .sprint-fill.tired { background: #9ca3af; }
+  /* ---------- Upgrade cards ---------- */
+  .upgrades {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: calc(3.6rem + env(safe-area-inset-top, 0px));
+    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+    pointer-events: auto; width: min(640px, calc(100vw - 2rem));
+  }
+  .upgrades.hidden { display: none; }
+  .upgrades-title {
+    font-weight: 600; font-size: 1rem; color: var(--ink);
+    background: var(--panel); border: 2px solid var(--panel-edge);
+    padding: 0.2rem 0.8rem; border-radius: 999px;
+  }
+  .upgrade-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; width: 100%; }
+  .upgrade-card {
+    font: inherit; color: var(--ink); text-align: left; cursor: pointer;
+    background: var(--panel); border: 2px solid var(--panel-edge); border-radius: 1rem;
+    padding: 0.6rem 0.75rem 0.65rem; display: flex; flex-direction: column; gap: 0.2rem;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.12);
+    animation: deal 260ms ease-out both;
+  }
+  .upgrade-card:nth-child(2) { animation-delay: 60ms; }
+  .upgrade-card:nth-child(3) { animation-delay: 120ms; }
+  @keyframes deal { from { transform: translateY(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .upgrade-card:hover { border-color: #38bdf8; }
+  .upgrade-top { display: flex; align-items: center; gap: 0.45rem; }
+  .upgrade-card kbd { background: #38bdf8; color: #06283d; border-color: #38bdf8; }
+  .upgrade-name { font-weight: 600; font-size: 1rem; }
+  .upgrade-desc { font-size: 0.88rem; color: var(--ink-soft); }
+  .pips { display: flex; gap: 3px; margin-top: 0.15rem; }
+  .pip-lv { width: 14px; height: 5px; border-radius: 3px; background: var(--panel-edge); }
+  .pip-lv.on { background: #38bdf8; }
+  .pip-lv.next { background: #38bdf8; opacity: 0.45; }
+
+  /* ---------- Toast + death screen ---------- */
+  .toast {
+    position: absolute; left: 50%; bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%); white-space: nowrap;
+    background: var(--panel); border: 2px solid var(--panel-edge); color: var(--ink);
+    font-weight: 600; padding: 0.4rem 1rem; border-radius: 999px;
+    opacity: 0; transition: opacity 200ms ease;
+  }
+  .toast.show { opacity: 1; }
+  #death {
+    position: fixed; inset: 0; display: grid; place-items: center; padding: 1.5rem;
+    background: rgba(90, 0, 0, 0.35);
+  }
+  #death.hidden { display: none; }
+  .death-card { text-align: center; gap: 0.9rem; }
+  .death-card h2 { margin: 0; font-size: 2.2rem; line-height: 1; color: #dc2626; }
+  .death-card p { margin: 0; color: var(--ink-soft); font-size: 1.05rem; }
+  .death-card strong { color: var(--ink); }
+  .link-btn {
+    font: inherit; background: none; border: 0; cursor: pointer;
+    color: var(--ink-soft); text-decoration: underline; font-size: 0.95rem;
+  }
+  .hud-tip #kills { margin-left: 0.6rem; color: var(--ink); font-weight: 500; }
+  @media (max-width: 560px) {
+    .upgrade-row { grid-template-columns: 1fr; }
+    .upgrade-desc { display: none; }
+  }
   @media (max-width: 560px) {
     .sprint-track { width: 110px; }
     #minimap { width: 96px; height: 96px; }
@@ -205,6 +272,8 @@
   @media (prefers-reduced-motion: reduce) {
     .dash-ring.ready-pop { animation: none; }
     .health-fill { transition: none; }
+    .upgrade-card { animation: none; }
+    .toast { transition: none; }
   }
 </style>
 </head>
@@ -241,10 +310,15 @@
 </div>
 
 <div id="hud" class="hidden">
-  <div class="hud-tip">Esc to leave<span id="count"></span></div>
+  <div class="hud-tip">Esc to leave<span id="count"></span><span id="kills">Kills 0</span></div>
   <div class="health" aria-label="Health">
     <div class="health-track"><div class="health-fill" id="hpFill"></div><div class="health-text" id="hpText">100</div></div>
   </div>
+  <div class="upgrades hidden" id="upgrades">
+    <div class="upgrades-title" id="upgradesTitle">Pick an upgrade</div>
+    <div class="upgrade-row" id="upgradeRow"></div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
   <div class="abilities">
     <div class="dash">
       <kbd>R</kbd>
@@ -262,6 +336,16 @@
     </div>
   </div>
   <canvas id="minimap"></canvas>
+</div>
+
+<div id="death" class="hidden">
+  <div class="card death-card">
+    <h2>Eliminated</h2>
+    <p>by <strong id="killerName">someone</strong></p>
+    <p>Kills this life: <strong id="deathKills">0</strong></p>
+    <button type="button" id="respawn" class="respawn-btn">Respawn</button>
+    <button type="button" class="link-btn" id="toMenu">Main menu</button>
+  </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -297,6 +381,9 @@
   const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
                   "#3b82f6", "#8b5cf6", "#ec4899", "#64748b"];
   const HEX = /^#[0-9a-fA-F]{6}$/;
+  // your current stats (the server sends new ones when you upgrade)
+  const BASE_STATS = { maxHp: HP_MAX, speedMult: 1, drawRange: DRAW_RANGE, inkMax: INK_MAX,
+    fireMs: FIRE_MS, dashCooldown: DASH_COOLDOWN, staminaMax: STAMINA_MAX, kills: 0 };
 
   // ================= DOM =================
   const $ = (id) => document.getElementById(id);
@@ -309,6 +396,10 @@
   const hpFill = $("hpFill"), hpText = $("hpText");
   const dashRing = $("dashRing"), dashCd = $("dashCd"), dashNum = $("dashNum");
   const sprintFill = $("sprintFill");
+  const upgradesEl = $("upgrades"), upgradesTitle = $("upgradesTitle"), upgradeRow = $("upgradeRow");
+  const toastEl = $("toast"), killsEl = $("kills");
+  const deathEl = $("death"), killerName = $("killerName"), deathKills = $("deathKills");
+  const respawnBtn = $("respawn"), toMenuBtn = $("toMenu");
 
   // ================= State =================
   const state = {
@@ -330,6 +421,8 @@
     stamina: STAMINA_MAX, exhausted: false,
     dashUntil: 0, dashReadyAt: 0, dashDir: { x: 1, y: 0 }, lastLocalDash: -1e9,
     hp: HP_MAX, hurtFlash: 0, wasReady: true,
+    stats: { ...BASE_STATS },
+    offer: null,                  // upgrade cards waiting for you to pick
   };
 
   try {
@@ -364,6 +457,7 @@
     state.walls = list.map((w) => ({ ...w, born: now - (w.age || 0) }));
   });
   socket.on("wall", (w) => state.walls.push({ ...w, born: performance.now() - (w.age || 0) }));
+  const wallLife = (w) => w.life || WALL_LIFE;
   socket.on("wallsGone", (ids) => { const g = new Set(ids); state.walls = state.walls.filter((w) => !g.has(w.id)); });
 
   socket.on("shot", (b) => {
@@ -392,8 +486,16 @@
     state.others.delete(id);
   });
 
-  socket.on("died", ({ by }) => {
-    backToMenu(`You were eliminated by ${String(by).slice(0, 16)}.`);
+  socket.on("died", ({ by, kills }) => showDeath(String(by).slice(0, 16), kills || 0));
+
+  socket.on("stats", (st) => {
+    state.stats = { ...state.stats, ...st };
+    killsEl.textContent = `Kills ${state.stats.kills}`;
+  });
+  socket.on("offer", (o) => showOffer(o));
+  socket.on("picked", ({ name }) => toast(`${name} upgraded!`));
+  socket.on("kill", ({ name, heal }) => {
+    toast(`You eliminated ${String(name).slice(0, 16)}  +${heal} HP`);
   });
 
   socket.on("state", (data) => {
@@ -410,7 +512,7 @@
           else { p.x += (sp.x - p.x) * 0.15; p.y += (sp.y - p.y) * 0.15; }
         }
         p.ink = sp.ink;
-        state.myInk = (sp.ink / 100) * INK_MAX;
+        state.myInk = (sp.ink / 100) * state.stats.inkMax;
         state.hp = sp.hp; p.hp = sp.hp;
         state.stamina = sp.stamina; state.exhausted = sp.exhausted;
         if (now - state.lastLocalDash > 600) state.dashReadyAt = now + sp.dashCd;
@@ -421,7 +523,7 @@
       if (!o) { o = { x: sp.x, y: sp.y }; state.others.set(sp.id, o); }
       o.tx = sp.x; o.ty = sp.y; o.name = sp.name;
       o.color = HEX.test(sp.color) ? sp.color : "#64748b";
-      o.ink = sp.ink; o.hp = sp.hp; o.dashing = sp.dashing;
+      o.ink = sp.ink; o.hp = sp.hp; o.maxHp = sp.maxHp || HP_MAX; o.dashing = sp.dashing;
     }
     for (const id of state.others.keys()) if (!seen.has(id)) state.others.delete(id);
     updateCounts();
@@ -437,6 +539,73 @@
     } else onlineEl.textContent = "Arena is empty. Be the first in!";
     countEl.textContent = socket.connected ? `${n + (state.screen === "game" ? 1 : 0)} playing` : "reconnecting...";
   }
+
+  // ================= Upgrades =================
+  function showOffer(o) {
+    state.offer = o;
+    upgradeRow.textContent = "";
+    upgradesTitle.textContent = o.pending > 1 ? `Pick an upgrade (${o.pending} to pick)` : "Pick an upgrade";
+    o.cards.forEach((c, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "upgrade-card";
+      const top = document.createElement("div"); top.className = "upgrade-top";
+      const k = document.createElement("kbd"); k.textContent = i + 1;
+      const n = document.createElement("span"); n.className = "upgrade-name"; n.textContent = c.name;
+      top.append(k, n);
+      const d = document.createElement("div"); d.className = "upgrade-desc"; d.textContent = c.desc;
+      const pips = document.createElement("div"); pips.className = "pips";
+      pips.setAttribute("aria-label", `Level ${c.level} of ${c.max}`);
+      for (let l = 0; l < c.max; l++) {
+        const pp = document.createElement("span");
+        pp.className = "pip-lv" + (l < c.level ? " on" : l === c.level ? " next" : "");
+        pips.appendChild(pp);
+      }
+      b.append(top, d, pips);
+      b.addEventListener("click", () => pickUpgrade(i));
+      upgradeRow.appendChild(b);
+    });
+    upgradesEl.classList.remove("hidden");
+  }
+  function pickUpgrade(i) {
+    if (!state.offer || !state.offer.cards[i]) return;
+    socket.emit("pick", { index: i });
+    hideOffer();
+  }
+  function hideOffer() {
+    state.offer = null;
+    upgradesEl.classList.add("hidden");
+  }
+
+  let toastTimer = 0;
+  function toast(text) {
+    toastEl.textContent = text;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2200);
+  }
+
+  // ================= Death + respawn =================
+  function showDeath(by, kills) {
+    state.screen = "dead";
+    if (state.player) state.rings.push({ x: state.player.x, y: state.player.y, t: performance.now(), color: state.player.color, big: true });
+    state.player = null;
+    Object.assign(state, { pointer: null, drawing: false, lastDrawPt: null, firing: false });
+    state.keys.clear();
+    hideOffer();
+    myId = null;
+    canvas.classList.remove("drawable");
+    hud.classList.add("hidden");
+    killerName.textContent = by;
+    deathKills.textContent = kills;
+    deathEl.classList.remove("hidden");
+    respawnBtn.focus();
+  }
+  respawnBtn.addEventListener("click", () => {
+    if (!socket.connected) return;
+    deathEl.classList.add("hidden");
+    startGame();
+  });
+  toMenuBtn.addEventListener("click", () => backToMenu());
 
   // ================= Menu =================
   function buildSwatches() {
@@ -481,7 +650,11 @@
       screen: "game", myInk: INK_MAX, hp: HP_MAX, stamina: STAMINA_MAX, exhausted: false,
       dashUntil: 0, dashReadyAt: 0, lastLocalDash: -1e9, hurtFlash: 0, wasReady: true,
       firing: false, drawing: false, lastDrawPt: null, pointer: null,
+      stats: { ...BASE_STATS },
     });
+    hideOffer();
+    killsEl.textContent = "Kills 0";
+    deathEl.classList.add("hidden");
     state.keys.clear();
     lastInput = "";
     hint.textContent = "";
@@ -501,6 +674,8 @@
     canvas.classList.remove("drawable");
     myId = null;
     socket.emit("leave");
+    hideOffer();
+    deathEl.classList.add("hidden");
     menu.classList.remove("hidden");
     hud.classList.add("hidden");
     hint.textContent = message || "";
@@ -517,6 +692,8 @@
       state.keys.add(e.code); e.preventDefault();
     }
     if (e.code === "KeyR" && !e.repeat) tryDash();
+    const pick = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
+    if (pick !== undefined && !e.repeat) pickUpgrade(pick);
   });
   window.addEventListener("keyup", (e) => state.keys.delete(e.code));
   window.addEventListener("blur", () => { state.keys.clear(); state.firing = false; state.drawing = false; state.lastDrawPt = null; });
@@ -584,7 +761,7 @@
     if (dx === 0 && dy === 0) return;
     state.dashDir = { x: dx, y: dy };
     state.dashUntil = now + DASH_TIME;
-    state.dashReadyAt = now + DASH_COOLDOWN;
+    state.dashReadyAt = now + state.stats.dashCooldown;
     state.lastLocalDash = now;
     state.rings.push({ x: p.x, y: p.y, t: now, color: p.color });
     socket.emit("dash", { dx, dy });
@@ -598,7 +775,7 @@
     const dx = a.x - p.x, dy = a.y - p.y;
     if (Math.hypot(dx, dy) < 1) return;
     socket.emit("shoot", { dx, dy });
-    state.nextShotAt = now + FIRE_MS;
+    state.nextShotAt = now + state.stats.fireMs;
   }
 
   // ================= Drawing walls =================
@@ -607,7 +784,7 @@
     if (!state.drawing || !state.mouse) return;
     const cur = screenToWorld(state.mouse);
     const p = state.player;
-    state.outOfRange = Math.hypot(cur.x - p.x, cur.y - p.y) > DRAW_RANGE;
+    state.outOfRange = Math.hypot(cur.x - p.x, cur.y - p.y) > state.stats.drawRange;
     if (state.outOfRange) { state.lastDrawPt = null; return; }
     if (!state.lastDrawPt) { state.lastDrawPt = cur; return; }
     let from = state.lastDrawPt;
@@ -679,7 +856,7 @@
     }
 
     // walls: backup cleanup (the server normally tells us)
-    state.walls = state.walls.filter((w) => now - w.born < WALL_LIFE + 1000);
+    state.walls = state.walls.filter((w) => now - w.born < wallLife(w) + 1000);
 
     // bullets fly; they vanish on walls right away so it looks right
     state.bullets = state.bullets.filter((b) => {
@@ -717,10 +894,11 @@
         p.y += state.dashDir.y * DASH_SPEED * dt;
         addTrail("me", p.x, p.y, now);
       } else {
-        let speed = PLAYER_SPEED;
+        let speed = PLAYER_SPEED * state.stats.speedMult;
         if (wantSprint && (dx || dy) && !state.exhausted && state.stamina > 0) {
           speed *= SPRINT_MULT;
-          state.stamina = Math.max(0, state.stamina - STAMINA_DRAIN * dt); // smooth bar between server updates
+          // stamina is a percent; drain it smoothly between server updates
+          state.stamina = Math.max(0, state.stamina - (STAMINA_DRAIN / state.stats.staminaMax) * 100 * dt);
         }
         p.x += dx * speed * dt;
         p.y += dy * speed * dt;
@@ -745,16 +923,17 @@
   }
 
   function updateHud(now) {
-    const hp = Math.max(0, Math.min(HP_MAX, state.hp));
-    hpFill.style.width = (hp / HP_MAX) * 100 + "%";
-    hpText.textContent = Math.ceil(hp);
+    const maxHp = state.stats.maxHp;
+    const hp = Math.max(0, Math.min(maxHp, state.hp));
+    hpFill.style.width = (hp / maxHp) * 100 + "%";
+    hpText.textContent = `${Math.ceil(hp)} / ${maxHp}`;
 
-    sprintFill.style.width = (state.stamina / STAMINA_MAX) * 100 + "%";
+    sprintFill.style.width = Math.min(100, state.stamina) + "%";
     sprintFill.classList.toggle("tired", state.exhausted);
 
     const left = Math.max(0, state.dashReadyAt - now);
     const ready = left <= 0;
-    dashCd.style.setProperty("--cd", ready ? "0turn" : (left / DASH_COOLDOWN) + "turn");
+    dashCd.style.setProperty("--cd", ready ? "0turn" : Math.min(1, left / state.stats.dashCooldown) + "turn");
     dashNum.textContent = ready ? "" : Math.ceil(left / 1000);
     dashRing.classList.toggle("cooling", !ready);
     if (ready && !state.wasReady) {
@@ -815,7 +994,7 @@
     if (opts.showHp && typeof p.hp === "number") {
       const bw = 56, bh = 6, bx = sx - bw / 2, by = sy - p.r - 16;
       ctx.fillStyle = "rgba(0,0,0,0.35)"; roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 4); ctx.fill();
-      ctx.fillStyle = "#dc2626"; roundRect(bx, by, bw * Math.max(0, p.hp / HP_MAX), bh, 3); ctx.fill();
+      ctx.fillStyle = "#dc2626"; roundRect(bx, by, bw * Math.max(0, Math.min(1, p.hp / (p.maxHp || HP_MAX))), bh, 3); ctx.fill();
     }
     // ink bar under the player
     if (typeof p.ink === "number") {
@@ -876,7 +1055,7 @@
     // walls
     ctx.lineCap = "round"; ctx.lineWidth = WALL_HALF * 2;
     for (const wl of state.walls) {
-      const age = now - wl.born, fadeStart = WALL_LIFE - WALL_FADE;
+      const age = now - wl.born, fadeStart = wallLife(wl) - WALL_FADE;
       ctx.globalAlpha = age < fadeStart ? 1 : Math.max(0.15, 1 - (age - fadeStart) / WALL_FADE);
       ctx.strokeStyle = darken(wl.color, 0.85);
       ctx.beginPath(); ctx.moveTo(wl.x1 + ox, wl.y1 + oy); ctx.lineTo(wl.x2 + ox, wl.y2 + oy); ctx.stroke();
@@ -897,7 +1076,7 @@
     if (state.player) drawTrail("me", state.player.color, ox, oy, now);
 
     for (const o of state.others.values()) {
-      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink, hp: o.hp }, o.x + ox, o.y + oy, { showHp: true });
+      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink, hp: o.hp, maxHp: o.maxHp }, o.x + ox, o.y + oy, { showHp: true });
     }
     if (state.player) {
       const dashing = now < state.dashUntil;
@@ -927,20 +1106,20 @@
     if (state.player) {
       const cx = state.player.x + ox, cy = state.player.y + oy;
       if (state.drawing) {
-        ctx.beginPath(); ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(cx, cy, state.stats.drawRange, 0, Math.PI * 2);
         ctx.setLineDash([10, 10]); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(128,128,128,0.35)"; ctx.stroke(); ctx.setLineDash([]);
       }
       if (state.rangeHint > 0.01) {
-        ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2, true);
+        ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.arc(cx, cy, state.stats.drawRange, 0, Math.PI * 2, true);
         ctx.fillStyle = `rgba(230,40,40,${0.28 * state.rangeHint})`; ctx.fill("evenodd");
-        ctx.beginPath(); ctx.arc(cx, cy, DRAW_RANGE, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(cx, cy, state.stats.drawRange, 0, Math.PI * 2);
         ctx.lineWidth = 2; ctx.strokeStyle = `rgba(230,40,40,${0.7 * state.rangeHint})`; ctx.stroke();
       }
     }
 
     // red vignette: stronger as your health drops, flashes when you get hit
     if (state.screen === "game") {
-      const missing = 1 - Math.max(0, state.hp) / HP_MAX;
+      const missing = 1 - Math.max(0, Math.min(1, state.hp / state.stats.maxHp));
       let strength = Math.min(1, missing * 1.15) * 0.75;
       if (state.hp < 30 && !reducedMotion) strength += 0.08 * (1 + Math.sin(now / 180));
       strength = Math.min(0.95, strength + state.hurtFlash * 0.35);

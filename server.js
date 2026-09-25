@@ -39,16 +39,54 @@ const BULLET_RADIUS = 5;
 const BULLET_DAMAGE = 12;
 
 // Health
-const HP_MAX = 100;
-const HP_REGEN = 4;           // per second
-const HP_REGEN_DELAY = 5000;  // ms after getting hit before you heal
+const HP_MAX = 100;           // starting max health
+const HP_REGEN = 1;           // health healed per second, all the time
+const KILL_HEAL = 50;         // health you get back for eliminating someone
+
+// ---------------- Upgrades (pick 1 of 3 after every kill) ----------------
+// Each has a max level. Damage and fire rate take small steps with low caps
+// so nobody gets overpowered too fast.
+const UPGRADES = {
+  maxhp:    { name: "Tough Skin",      desc: "+20 max health",           max: 5, apply: (p) => { p.maxHp += 20; p.hp += 20; } },
+  regen:    { name: "Regeneration",    desc: "+0.75 health per second",  max: 3, apply: (p) => { p.regen += 0.75; } },
+  damage:   { name: "Sharper Shots",   desc: "+2 bullet damage",         max: 3, apply: (p) => { p.dmg += 2; } },
+  firerate: { name: "Quick Trigger",   desc: "Shoot 8% faster",          max: 3, apply: (p) => { p.fireMs = Math.round(p.fireMs * 0.92); } },
+  bullet:   { name: "Velocity",        desc: "Bullets fly 12% faster",   max: 3, apply: (p) => { p.bulletSpeed *= 1.12; } },
+  reach:    { name: "Long Arm",        desc: "+50 drawing reach",        max: 4, apply: (p) => { p.drawRange += 50; } },
+  ink:      { name: "Bigger Tank",     desc: "+120 ink",                 max: 4, apply: (p) => { p.inkMax += 120; p.ink += 120; } },
+  walls:    { name: "Sturdy Walls",    desc: "Walls last 0.7s longer",   max: 4, apply: (p) => { p.wallLife += 700; } },
+  speed:    { name: "Light Feet",      desc: "+6% move speed",           max: 3, apply: (p) => { p.speedMult += 0.06; } },
+  stamina:  { name: "Deep Breath",     desc: "+30 sprint stamina",       max: 3, apply: (p) => { p.staminaMax += 30; p.stamina += 30; } },
+  dash:     { name: "Quick Recharge",  desc: "Dash cooldown -1.5s",      max: 4, apply: (p) => { p.dashCooldown -= 1500; } },
+};
+
+function makeOffer(p) {
+  const options = Object.keys(UPGRADES).filter((k) => (p.levels[k] || 0) < UPGRADES[k].max);
+  for (let i = options.length - 1; i > 0; i--) {           // shuffle
+    const j = Math.floor(Math.random() * (i + 1));
+    [options[i], options[j]] = [options[j], options[i]];
+  }
+  p.offer = options.slice(0, 3);
+  if (!p.offer.length) { p.offer = null; p.pendingPicks = 0; return; }
+  io.to(p.id).emit("offer", {
+    pending: p.pendingPicks,
+    cards: p.offer.map((k) => ({ key: k, name: UPGRADES[k].name, desc: UPGRADES[k].desc, level: p.levels[k] || 0, max: UPGRADES[k].max })),
+  });
+}
+
+function sendStats(p) {
+  io.to(p.id).emit("stats", {
+    maxHp: p.maxHp, speedMult: p.speedMult, drawRange: p.drawRange, inkMax: p.inkMax,
+    fireMs: p.fireMs, dashCooldown: p.dashCooldown, staminaMax: p.staminaMax, kills: p.kills,
+  });
+}
 
 // Drawing / walls (right click)
 const INK_MAX = 450;
 const INK_REGEN = 180;
 const REGEN_DELAY = 500;
-const WALL_LIFE = 2800;
-const DRAW_RANGE = 260;
+const WALL_LIFE = 2800;       // starting wall life (upgrades add to it)
+const DRAW_RANGE = 260;       // starting drawing reach (upgrades add to it)
 const RANGE_SLACK = 60;
 const WALL_HALF = 5;
 const MAX_SEGMENT = 80;
@@ -127,13 +165,33 @@ io.on("connection", (socket) => {
       dx: 0, dy: 0, sprint: false,
       stamina: STAMINA_MAX, lastSprint: 0, exhausted: false,
       dashUntil: 0, dashReadyAt: 0, dashDx: 0, dashDy: 0,
-      hp: HP_MAX, lastHit: 0, lastShot: 0,
+      hp: HP_MAX, lastShot: 0,
       ink: INK_MAX, lastDraw: 0,
+      // stats that upgrades change
+      maxHp: HP_MAX, regen: HP_REGEN, dmg: BULLET_DAMAGE, fireMs: FIRE_MS, bulletSpeed: BULLET_SPEED,
+      drawRange: DRAW_RANGE, inkMax: INK_MAX, wallLife: WALL_LIFE, speedMult: 1,
+      staminaMax: STAMINA_MAX, dashCooldown: DASH_COOLDOWN,
+      levels: {}, kills: 0, offer: null, pendingPicks: 0,
     };
     players.set(socket.id, p);
+    sendStats(p);
     socket.emit("welcome", { id: socket.id, x: p.x, y: p.y });
     const now = Date.now();
-    socket.emit("walls", walls.map((w) => ({ id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, color: w.color, age: now - w.born })));
+    socket.emit("walls", walls.map((w) => ({ id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, color: w.color, life: w.life, age: now - w.born })));
+  });
+
+  socket.on("pick", (data) => {
+    const p = players.get(socket.id);
+    if (!p || !p.offer) return;
+    const key = p.offer[Number(data?.index)];
+    if (!key) return;
+    UPGRADES[key].apply(p);
+    p.levels[key] = (p.levels[key] || 0) + 1;
+    p.pendingPicks = Math.max(0, p.pendingPicks - 1);
+    p.offer = null;
+    sendStats(p);
+    io.to(p.id).emit("picked", { name: UPGRADES[key].name });
+    if (p.pendingPicks > 0) makeOffer(p);
   });
 
   socket.on("input", (data) => {
@@ -153,23 +211,23 @@ io.on("connection", (socket) => {
     const l = Math.hypot(dx, dy);
     p.dashDx = dx / l; p.dashDy = dy / l;
     p.dashUntil = now + DASH_TIME;
-    p.dashReadyAt = now + DASH_COOLDOWN;
+    p.dashReadyAt = now + p.dashCooldown;
     io.emit("dashed", { id: p.id });
   });
 
   socket.on("shoot", (data) => {
     const p = players.get(socket.id);
     const now = Date.now();
-    if (!p || now - p.lastShot < FIRE_MS - 40) return; // fire-rate limit
+    if (!p || now - p.lastShot < p.fireMs - 40) return; // fire-rate limit
     const { dx, dy, len } = readDir(data);
     if (len < 0.1) return;
     const l = Math.hypot(dx, dy);
     const ux = dx / l, uy = dy / l;
     p.lastShot = now;
     const b = {
-      id: nextBulletId++, owner: p.id, color: p.color, born: now,
+      id: nextBulletId++, owner: p.id, color: p.color, born: now, dmg: p.dmg,
       x: p.x + ux * (PLAYER_RADIUS + 8), y: p.y + uy * (PLAYER_RADIUS + 8),
-      vx: ux * BULLET_SPEED, vy: uy * BULLET_SPEED,
+      vx: ux * p.bulletSpeed, vy: uy * p.bulletSpeed,
     };
     bullets.push(b);
     io.emit("shot", { id: b.id, x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color });
@@ -183,7 +241,7 @@ io.on("connection", (socket) => {
     x1 = clampWorld(x1); y1 = clampWorld(y1); x2 = clampWorld(x2); y2 = clampWorld(y2);
     let len = Math.hypot(x2 - x1, y2 - y1);
     if (len < 1 || len > MAX_SEGMENT || p.ink < 1) return;
-    const reach = DRAW_RANGE + RANGE_SLACK;
+    const reach = p.drawRange + RANGE_SLACK;
     if (Math.hypot(x1 - p.x, y1 - p.y) > reach || Math.hypot(x2 - p.x, y2 - p.y) > reach) return;
     // can't draw on top of anyone (that would shove them through to the other side)
     for (const other of players.values()) {
@@ -196,9 +254,9 @@ io.on("connection", (socket) => {
     }
     p.ink -= len;
     p.lastDraw = Date.now();
-    const w = { id: nextWallId++, x1, y1, x2, y2, color: p.color, born: Date.now() };
+    const w = { id: nextWallId++, x1, y1, x2, y2, color: p.color, born: Date.now(), life: p.wallLife };
     walls.push(w);
-    io.emit("wall", { id: w.id, x1, y1, x2, y2, color: w.color, age: 0 });
+    io.emit("wall", { id: w.id, x1, y1, x2, y2, color: w.color, life: w.life, age: 0 });
   });
 
   socket.on("leave", () => players.delete(socket.id));
@@ -215,7 +273,7 @@ setInterval(() => {
   // walls disappear after their lifetime
   const goneWalls = [];
   walls = walls.filter((w) => {
-    if (now - w.born < WALL_LIFE) return true;
+    if (now - w.born < w.life) return true;
     goneWalls.push(w.id);
     return false;
   });
@@ -223,8 +281,8 @@ setInterval(() => {
 
   // move players
   for (const p of players.values()) {
-    if (now - p.lastDraw > REGEN_DELAY) p.ink = Math.min(INK_MAX, p.ink + INK_REGEN * dt);
-    if (now - p.lastHit > HP_REGEN_DELAY) p.hp = Math.min(HP_MAX, p.hp + HP_REGEN * dt);
+    if (now - p.lastDraw > REGEN_DELAY) p.ink = Math.min(p.inkMax, p.ink + INK_REGEN * dt);
+    p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
 
     if (now < p.dashUntil) {
       // dashing: fly straight and ignore walls
@@ -232,14 +290,14 @@ setInterval(() => {
       p.y += p.dashDy * DASH_SPEED * dt;
     } else {
       const moving = p.dx !== 0 || p.dy !== 0;
-      let speed = PLAYER_SPEED;
+      let speed = PLAYER_SPEED * p.speedMult;
       if (p.sprint && moving && !p.exhausted && p.stamina > 0) {
         speed *= SPRINT_MULT;
         p.stamina = Math.max(0, p.stamina - STAMINA_DRAIN * dt);
         p.lastSprint = now;
         if (p.stamina === 0) p.exhausted = true;
       } else if (now - p.lastSprint > STAMINA_DELAY) {
-        p.stamina = Math.min(STAMINA_MAX, p.stamina + STAMINA_REGEN * dt);
+        p.stamina = Math.min(p.staminaMax, p.stamina + STAMINA_REGEN * dt);
         if (p.stamina >= EXHAUSTED_UNTIL) p.exhausted = false;
       }
       p.x += p.dx * speed * dt;
@@ -268,8 +326,7 @@ setInterval(() => {
       for (const p of players.values()) {
         if (p.id === b.owner) continue;
         if (Math.hypot(p.x - b.x, p.y - b.y) < PLAYER_RADIUS + BULLET_RADIUS) {
-          p.hp -= BULLET_DAMAGE;
-          p.lastHit = now;
+          p.hp -= b.dmg;
           hits.push({ id: p.id, x: Math.round(b.x), y: Math.round(b.y), by: b.owner });
           goneBullets.push(b.id);
           return false;
@@ -287,7 +344,15 @@ setInterval(() => {
     if (!p || p.hp > 0) continue;
     const killer = players.get(h.by);
     players.delete(p.id);
-    io.to(p.id).emit("died", { by: killer ? killer.name : "someone" });
+    io.to(p.id).emit("died", { by: killer ? killer.name : "someone", kills: p.kills });
+    if (killer) {
+      killer.kills++;
+      killer.hp = Math.min(killer.maxHp, killer.hp + KILL_HEAL);
+      killer.pendingPicks++;
+      sendStats(killer);
+      io.to(killer.id).emit("kill", { name: p.name, heal: KILL_HEAL });
+      if (!killer.offer) makeOffer(killer);
+    }
     io.emit("eliminated", { id: p.id, x: Math.round(p.x), y: Math.round(p.y), color: p.color });
   }
 
@@ -295,9 +360,9 @@ setInterval(() => {
     players: [...players.values()].map((p) => ({
       id: p.id, name: p.name, color: p.color,
       x: Math.round(p.x), y: Math.round(p.y),
-      ink: Math.round((p.ink / INK_MAX) * 100),
-      hp: Math.max(0, Math.round(p.hp)),
-      stamina: Math.round(p.stamina),
+      ink: Math.round((p.ink / p.inkMax) * 100),
+      hp: Math.max(0, Math.round(p.hp)), maxHp: p.maxHp,
+      stamina: Math.round((p.stamina / p.staminaMax) * 100),
       exhausted: p.exhausted,
       dashing: now < p.dashUntil,
       dashCd: Math.max(0, p.dashReadyAt - now),
