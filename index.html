@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>circle.io</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --arena: #eef3ea;
+    --grid: #d9e2d3;
+    --outside: #c9d3c3;
+    --ink: #22302a;
+    --ink-soft: #5d6d64;
+    --panel: #ffffff;
+    --panel-edge: #dfe6da;
+    --play: #2f9e6e;
+    --play-ink: #ffffff;
+    --focus: #1f6fd1;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --arena: #1c2521; --grid: #26322c; --outside: #121815;
+      --ink: #eef3ea; --ink-soft: #a4b3aa; --panel: #202b26; --panel-edge: #33423a;
+      --play: #3fb883; --play-ink: #0d1a14; --focus: #7fb4ff;
+    }
+  }
+  :root[data-theme="dark"] {
+    --arena: #1c2521; --grid: #26322c; --outside: #121815;
+    --ink: #eef3ea; --ink-soft: #a4b3aa; --panel: #202b26; --panel-edge: #33423a;
+    --play: #3fb883; --play-ink: #0d1a14; --focus: #7fb4ff;
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    height: 100%; margin: 0; overflow: hidden;
+    background: var(--arena); color: var(--ink);
+    font-family: "Fredoka", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+  }
+  canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* ---------- Menu ---------- */
+  #menu {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    padding: 1.5rem; padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
+  #menu.hidden { display: none; }
+  .card {
+    width: 100%; max-width: 22rem;
+    background: var(--panel); border: 2px solid var(--panel-edge);
+    border-radius: 2rem; padding: 2rem 1.75rem 1.75rem;
+    display: flex; flex-direction: column; align-items: center; gap: 1.25rem;
+    box-shadow: 0 1.25rem 3rem -1.5rem rgba(20, 40, 30, 0.35);
+  }
+  h1 {
+    margin: 0; font-size: 2.75rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+  }
+  h1 .dot { color: var(--ink-soft); }
+  .preview {
+    width: 7.5rem; height: 7.5rem; border-radius: 50%;
+    display: grid; place-items: center;
+    border: 6px solid rgba(0,0,0,0.18);
+    transition: background-color 150ms ease;
+  }
+  .preview span {
+    color: #fff; font-weight: 600; font-size: 1.05rem; max-width: 6rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-shadow: 0 0 3px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.5);
+  }
+  .field { width: 100%; display: flex; flex-direction: column; gap: 0.4rem; }
+  label, .legend { font-size: 0.95rem; font-weight: 500; color: var(--ink-soft); }
+  input[type="text"] {
+    width: 100%; font: inherit; font-size: 1.15rem; font-weight: 500;
+    padding: 0.7rem 1rem; border-radius: 1rem;
+    border: 2px solid var(--panel-edge); background: var(--arena); color: var(--ink);
+  }
+  input[type="text"]:focus { outline: none; border-color: var(--focus); }
+  .hint { min-height: 1.2em; margin: 0; font-size: 0.85rem; color: #c2410c; }
+  fieldset { border: 0; margin: 0; padding: 0; width: 100%; }
+  .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.55rem; margin-top: 0.4rem; }
+  .swatch {
+    aspect-ratio: 1; width: 100%; border-radius: 50%; cursor: pointer;
+    border: 3px solid transparent; padding: 0; position: relative;
+    box-shadow: inset 0 0 0 3px rgba(0,0,0,0.15);
+  }
+  .swatch[aria-pressed="true"] { border-color: var(--ink); transform: scale(1.08); }
+  .swatch:focus-visible, button:focus-visible, .custom:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .custom {
+    aspect-ratio: 1; border-radius: 50%; position: relative; overflow: hidden; cursor: pointer;
+    background: conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ec4899, #ef4444);
+    border: 3px solid transparent;
+  }
+  .custom.active { border-color: var(--ink); transform: scale(1.08); }
+  .custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; border: 0; padding: 0; }
+  #play {
+    width: 100%; font: inherit; font-size: 1.35rem; font-weight: 600;
+    padding: 0.8rem; border: 0; border-radius: 1.25rem; cursor: pointer;
+    background: var(--play); color: var(--play-ink);
+    box-shadow: 0 5px 0 rgba(0,0,0,0.2);
+    transition: transform 80ms ease, box-shadow 80ms ease;
+  }
+  #play:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.2); }
+  .controls { margin: 0; font-size: 0.85rem; color: var(--ink-soft); text-align: center; }
+  kbd {
+    font-family: inherit; font-weight: 600; font-size: 0.8rem;
+    padding: 0.05rem 0.35rem; border-radius: 0.35rem;
+    border: 1.5px solid var(--panel-edge); background: var(--arena);
+  }
+
+  /* ---------- In-game HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #hud.hidden { display: none; }
+  .hud-tip {
+    position: absolute; left: 1rem; top: calc(1rem + env(safe-area-inset-top, 0px));
+    font-size: 0.9rem; color: var(--ink-soft);
+    background: var(--panel); border: 2px solid var(--panel-edge);
+    padding: 0.35rem 0.75rem; border-radius: 0.9rem;
+  }
+  #minimap {
+    position: absolute; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    width: 130px; height: 130px; border-radius: 1rem;
+    border: 2px solid var(--panel-edge); background: var(--panel); opacity: 0.9;
+  }
+  .credit {
+    position: fixed; z-index: 5; pointer-events: none;
+    right: 1rem; top: calc(0.9rem + env(safe-area-inset-top, 0px));
+    font-size: 0.95rem; font-weight: 500; color: var(--ink-soft);
+  }
+  .online { margin: 0; font-size: 0.9rem; color: var(--ink-soft); min-height: 1.2em; }
+  .online .pip {
+    display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%;
+    background: #22c55e; margin-right: 0.35rem; vertical-align: 0.05rem;
+  }
+  .hud-tip #count { margin-left: 0.6rem; color: var(--ink); font-weight: 500; }
+  @media (prefers-reduced-motion: reduce) {
+    .preview, #play, .swatch { transition: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Game arena"></canvas>
+
+<div class="credit">(made by Emmett)</div>
+
+<div id="menu">
+  <form class="card" id="menuForm" novalidate>
+    <h1>circle<span class="dot">.io</span></h1>
+
+    <div class="preview" id="preview" aria-hidden="true"><span id="previewName">you</span></div>
+
+    <div class="field">
+      <label for="name">Your name</label>
+      <input type="text" id="name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Type a name">
+      <p class="hint" id="hint" role="alert"></p>
+    </div>
+
+    <fieldset>
+      <legend class="legend">Your color</legend>
+      <div class="swatches" id="swatches"></div>
+    </fieldset>
+
+    <button type="submit" id="play">Play</button>
+    <p class="online" id="online" aria-live="polite"></p>
+    <p class="controls"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move, <kbd>Esc</kbd> for menu</p>
+  </form>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="hud-tip">Esc to leave<span id="count"></span></div>
+  <canvas id="minimap"></canvas>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(() => {
+  // ================= Config =================
+  const WORLD_SIZE = 3000;     // arena is WORLD_SIZE x WORLD_SIZE
+  const GRID = 50;             // grid line spacing
+  const PLAYER_RADIUS = 30;
+  const PLAYER_SPEED = 320;    // pixels per second
+  const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
+                  "#3b82f6", "#8b5cf6", "#ec4899", "#64748b"];
+
+  // ================= DOM =================
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const mini = document.getElementById("minimap");
+  const mctx = mini.getContext("2d");
+  const menu = document.getElementById("menu");
+  const hud = document.getElementById("hud");
+  const form = document.getElementById("menuForm");
+  const nameInput = document.getElementById("name");
+  const hint = document.getElementById("hint");
+  const preview = document.getElementById("preview");
+  const previewName = document.getElementById("previewName");
+  const swatchBox = document.getElementById("swatches");
+  const onlineEl = document.getElementById("online");
+  const countEl = document.getElementById("count");
+
+  // ================= State =================
+  const state = {
+    screen: "menu",          // "menu" | "game"
+    name: "",
+    color: COLORS[5],
+    player: null,
+    camera: { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 },
+    keys: new Set(),
+    pointer: null,           // {x, y} in screen coords while touching/clicking
+    others: new Map(),       // peerId -> {x, y, tx, ty, name, color} for everyone else in the arena
+  };
+
+  // ================= Multiplayer (server) =================
+  // The server runs the real game. We send it which way we're pressing,
+  // and it sends back where everyone is ~30 times a second.
+  const socket = io();
+  let myId = null;
+  let online = 0;
+  let lastInput = "";
+
+  socket.on("connect", () => {
+    hint.textContent = "";
+    if (state.screen === "game" && state.player) {
+      // reconnected mid-game: rejoin
+      socket.emit("join", { name: state.player.name, color: state.player.color });
+    }
+    updateCounts();
+  });
+  socket.on("disconnect", () => { myId = null; lastInput = ""; updateCounts(); });
+  socket.on("welcome", (data) => { myId = data.id; lastInput = ""; });
+
+  socket.on("state", (data) => {
+    online = data.online || 0;
+    const seen = new Set();
+    for (const sp of data.players) {
+      if (sp.id === myId) {
+        // correct our own predicted position toward what the server says
+        const p = state.player;
+        if (p) {
+          const off = Math.hypot(sp.x - p.x, sp.y - p.y);
+          if (off > 150) { p.x = sp.x; p.y = sp.y; }
+          else { p.x += (sp.x - p.x) * 0.15; p.y += (sp.y - p.y) * 0.15; }
+        }
+        continue;
+      }
+      seen.add(sp.id);
+      let o = state.others.get(sp.id);
+      if (!o) { o = { x: sp.x, y: sp.y }; state.others.set(sp.id, o); }
+      o.tx = sp.x; o.ty = sp.y; o.name = sp.name; o.color = sp.color;
+    }
+    for (const id of state.others.keys()) if (!seen.has(id)) state.others.delete(id);
+    updateCounts();
+  });
+
+  function sendInput(dx, dy) {
+    const key = dx.toFixed(2) + "," + dy.toFixed(2);
+    if (key === lastInput || !socket.connected) return; // only send changes
+    lastInput = key;
+    socket.emit("input", { dx, dy });
+  }
+
+  function smoothOthers(dt) {
+    // glide toward the latest known spot so movement looks smooth between updates
+    const t = Math.min(1, dt * 12);
+    for (const o of state.others.values()) {
+      o.x += (o.tx - o.x) * t;
+      o.y += (o.ty - o.y) * t;
+    }
+  }
+
+  function updateCounts() {
+    const inArena = state.others.size;
+    onlineEl.innerHTML = "";
+    if (!socket.connected) {
+      onlineEl.textContent = "Connecting to the server...";
+    } else if (inArena > 0) {
+      const pip = document.createElement("span"); pip.className = "pip";
+      onlineEl.append(pip, `${inArena} ${inArena === 1 ? "player" : "players"} in the arena`);
+    } else {
+      onlineEl.textContent = "Arena is empty. Be the first in!";
+    }
+    const total = inArena + (state.screen === "game" ? 1 : 0);
+    countEl.textContent = socket.connected ? `${total} playing` : "reconnecting...";
+  }
+
+  // Remember name + color between visits
+  try {
+    const saved = JSON.parse(localStorage.getItem("circleio") || "null");
+    if (saved) { state.name = saved.name || ""; state.color = saved.color || state.color; }
+  } catch (e) {}
+
+  // ================= Menu =================
+  function buildSwatches() {
+    COLORS.forEach(c => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "swatch";
+      b.style.background = c;
+      b.dataset.color = c;
+      b.setAttribute("aria-label", "Color " + c);
+      b.addEventListener("click", () => setColor(c));
+      swatchBox.appendChild(b);
+    });
+    // custom color picker as the 10th swatch
+    const wrap = document.createElement("label");
+    wrap.className = "custom";
+    wrap.title = "Pick any color";
+    const picker = document.createElement("input");
+    picker.type = "color";
+    picker.setAttribute("aria-label", "Pick a custom color");
+    picker.addEventListener("input", e => setColor(e.target.value));
+    wrap.appendChild(picker);
+    swatchBox.appendChild(wrap);
+  }
+
+  function setColor(c) {
+    state.color = c;
+    preview.style.backgroundColor = c;
+    const isPreset = COLORS.includes(c);
+    swatchBox.querySelectorAll(".swatch").forEach(s =>
+      s.setAttribute("aria-pressed", String(s.dataset.color === c)));
+    swatchBox.querySelector(".custom").classList.toggle("active", !isPreset);
+  }
+
+  function updateName() {
+    state.name = nameInput.value.trim();
+    previewName.textContent = state.name || "you";
+    if (state.name) hint.textContent = "";
+  }
+
+  nameInput.addEventListener("input", updateName);
+
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    updateName();
+    if (!state.name) {
+      hint.textContent = "Type a name to play.";
+      nameInput.focus();
+      return;
+    }
+    if (!socket.connected) {
+      hint.textContent = "Still connecting to the server. Try again in a few seconds.";
+      return;
+    }
+    startGame();
+  });
+
+  // ================= Game flow =================
+  function startGame() {
+    try { localStorage.setItem("circleio", JSON.stringify({ name: state.name, color: state.color })); } catch (e) {}
+    state.player = {
+      x: WORLD_SIZE / 2 + (Math.random() - 0.5) * 600,
+      y: WORLD_SIZE / 2 + (Math.random() - 0.5) * 600,
+      r: PLAYER_RADIUS,
+      name: state.name,
+      color: state.color,
+    };
+    state.camera.x = state.player.x;
+    state.camera.y = state.player.y;
+    state.keys.clear();
+    state.screen = "game";
+    lastInput = "";
+    socket.emit("join", { name: state.name, color: state.color });
+    updateCounts();
+    menu.classList.add("hidden");
+    hud.classList.remove("hidden");
+    canvas.focus();
+  }
+
+  function backToMenu() {
+    state.screen = "menu";
+    state.player = null;
+    state.pointer = null;
+    myId = null;
+    socket.emit("leave");
+    updateCounts();
+    menu.classList.remove("hidden");
+    hud.classList.add("hidden");
+    nameInput.focus();
+  }
+
+  // ================= Input =================
+  const MOVE_KEYS = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+
+  window.addEventListener("keydown", e => {
+    if (state.screen !== "game") return;
+    if (e.code === "Escape") { backToMenu(); return; }
+    if (MOVE_KEYS.includes(e.code)) { state.keys.add(e.code); e.preventDefault(); }
+  });
+  window.addEventListener("keyup", e => state.keys.delete(e.code));
+  window.addEventListener("blur", () => state.keys.clear());
+
+  // Touch / mouse: hold to move toward the pointer (so it works on phones too)
+  canvas.addEventListener("pointerdown", e => { if (state.screen === "game") state.pointer = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener("pointermove", e => { if (state.pointer) state.pointer = { x: e.clientX, y: e.clientY }; });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(ev =>
+    canvas.addEventListener(ev, () => { state.pointer = null; }));
+
+  function getMoveDirection() {
+    const k = state.keys;
+    let dx = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
+    let dy = (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0) - (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0);
+
+    if (dx === 0 && dy === 0 && state.pointer) {
+      // direction from screen center (where the player is drawn) to the pointer
+      dx = state.pointer.x - view.w / 2;
+      dy = state.pointer.y - view.h / 2;
+      if (Math.hypot(dx, dy) < 10) return { dx: 0, dy: 0 };
+    }
+    const len = Math.hypot(dx, dy);
+    return len ? { dx: dx / len, dy: dy / len } : { dx: 0, dy: 0 }; // normalized so diagonals aren't faster
+  }
+
+  // ================= Update =================
+  let idleT = 0;
+  function update(dt) {
+    smoothOthers(dt);
+    if (state.screen === "game" && state.player) {
+      const p = state.player;
+      const { dx, dy } = getMoveDirection();
+      sendInput(dx, dy);
+      // move locally right away (prediction) so controls feel instant
+      p.x += dx * PLAYER_SPEED * dt;
+      p.y += dy * PLAYER_SPEED * dt;
+      // keep inside the arena walls
+      p.x = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.x));
+      p.y = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.y));
+      // smooth camera follow
+      const t = Math.min(1, dt * 10);
+      state.camera.x += (p.x - state.camera.x) * t;
+      state.camera.y += (p.y - state.camera.y) * t;
+    } else if (!reducedMotion) {
+      // slow drift behind the menu
+      idleT += dt;
+      state.camera.x = WORLD_SIZE / 2 + Math.cos(idleT * 0.08) * 500;
+      state.camera.y = WORLD_SIZE / 2 + Math.sin(idleT * 0.11) * 400;
+    }
+  }
+
+  // ================= Render =================
+  const view = { w: 0, h: 0, dpr: 1 };
+  let colors = {};
+
+  function readTheme() {
+    const s = getComputedStyle(document.documentElement);
+    colors = {
+      arena: s.getPropertyValue("--arena").trim(),
+      grid: s.getPropertyValue("--grid").trim(),
+      outside: s.getPropertyValue("--outside").trim(),
+      panel: s.getPropertyValue("--panel").trim(),
+      ink: s.getPropertyValue("--ink").trim(),
+    };
+  }
+
+  function resize() {
+    view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    view.w = window.innerWidth;
+    view.h = window.innerHeight;
+    canvas.width = view.w * view.dpr;
+    canvas.height = view.h * view.dpr;
+    mini.width = 130 * view.dpr;
+    mini.height = 130 * view.dpr;
+  }
+
+  function darken(hex, amt = 0.72) {
+    const n = parseInt(hex.replace("#", ""), 16);
+    const r = Math.round(((n >> 16) & 255) * amt);
+    const g = Math.round(((n >> 8) & 255) * amt);
+    const b = Math.round((n & 255) * amt);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function drawPlayer(p, sx, sy) {
+    ctx.beginPath();
+    ctx.arc(sx, sy, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = darken(p.color);
+    ctx.stroke();
+
+    const size = Math.max(12, p.r * 0.5);
+    ctx.font = `600 ${size}px Fredoka, "Trebuchet MS", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.lineJoin = "round";
+    ctx.strokeText(p.name, sx, sy);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(p.name, sx, sy);
+  }
+
+  function render() {
+    const { w, h, dpr } = view;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // world -> screen offset (camera centered)
+    const ox = w / 2 - state.camera.x;
+    const oy = h / 2 - state.camera.y;
+
+    // outside the walls
+    ctx.fillStyle = colors.outside;
+    ctx.fillRect(0, 0, w, h);
+
+    // arena floor
+    ctx.fillStyle = colors.arena;
+    ctx.fillRect(ox, oy, WORLD_SIZE, WORLD_SIZE);
+
+    // grid (only the visible part)
+    ctx.strokeStyle = colors.grid;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const left = Math.max(0, Math.floor(-ox / GRID) * GRID);
+    const right = Math.min(WORLD_SIZE, left + w + GRID * 2);
+    const top = Math.max(0, Math.floor(-oy / GRID) * GRID);
+    const bottom = Math.min(WORLD_SIZE, top + h + GRID * 2);
+    for (let x = left; x <= right; x += GRID) {
+      ctx.moveTo(x + ox, Math.max(0, oy)); ctx.lineTo(x + ox, Math.min(h, oy + WORLD_SIZE));
+    }
+    for (let y = top; y <= bottom; y += GRID) {
+      ctx.moveTo(Math.max(0, ox), y + oy); ctx.lineTo(Math.min(w, ox + WORLD_SIZE), y + oy);
+    }
+    ctx.stroke();
+
+    for (const o of state.others.values()) {
+      drawPlayer({ x: o.x, y: o.y, r: PLAYER_RADIUS, name: o.name, color: o.color }, o.x + ox, o.y + oy);
+    }
+    if (state.player) drawPlayer(state.player, state.player.x + ox, state.player.y + oy);
+
+    if (state.screen === "game") renderMinimap();
+  }
+
+  function renderMinimap() {
+    const size = 130, pad = 8, dpr = view.dpr;
+    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mctx.clearRect(0, 0, size, size);
+    const scale = (size - pad * 2) / WORLD_SIZE;
+    mctx.fillStyle = colors.arena;
+    mctx.fillRect(pad, pad, size - pad * 2, size - pad * 2);
+    for (const o of state.others.values()) {
+      mctx.beginPath();
+      mctx.arc(pad + o.x * scale, pad + o.y * scale, 3, 0, Math.PI * 2);
+      mctx.fillStyle = o.color;
+      mctx.fill();
+    }
+    const p = state.player;
+    if (!p) return;
+    mctx.beginPath();
+    mctx.arc(pad + p.x * scale, pad + p.y * scale, 4, 0, Math.PI * 2);
+    mctx.fillStyle = p.color;
+    mctx.fill();
+    mctx.lineWidth = 1.5;
+    mctx.strokeStyle = colors.ink;
+    mctx.stroke();
+  }
+
+  // ================= Loop =================
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); // cap so a tab switch doesn't teleport you
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // ================= Boot =================
+  const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let reducedMotion = motionQuery.matches;
+  motionQuery.addEventListener?.("change", e => { reducedMotion = e.matches; });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", readTheme);
+  new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  window.addEventListener("resize", resize);
+
+  buildSwatches();
+  nameInput.value = state.name;
+  updateName();
+  setColor(state.color);
+  updateCounts();
+  readTheme();
+  resize();
+  canvas.tabIndex = -1;
+  nameInput.focus();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
