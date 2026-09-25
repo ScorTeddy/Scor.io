@@ -43,6 +43,7 @@
     font-family: "Fredoka", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
   }
   canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  canvas#game.drawable { cursor: crosshair; }
 
   /* ---------- Menu ---------- */
   #menu {
@@ -168,7 +169,7 @@
 
     <button type="submit" id="play">Play</button>
     <p class="online" id="online" aria-live="polite"></p>
-    <p class="controls"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move, <kbd>Esc</kbd> for menu</p>
+    <p class="controls"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move, click and drag to draw walls, <kbd>Esc</kbd> for menu</p>
   </form>
 </div>
 
@@ -185,6 +186,13 @@
   const GRID = 50;             // grid line spacing
   const PLAYER_RADIUS = 30;
   const PLAYER_SPEED = 320;    // pixels per second
+  // Drawing / walls (must match server.js)
+  const INK_MAX = 1000;
+  const WALL_LIFE = 5000;      // ms solid
+  const WALL_FADE = 600;       // ms fade-out after that
+  const WALL_HALF = 5;
+  const MAX_SEGMENT = 60;      // client sends lines in pieces this long or shorter
+  const MIN_SEGMENT = 10;
   const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
                   "#3b82f6", "#8b5cf6", "#ec4899", "#64748b"];
 
@@ -213,7 +221,12 @@
     camera: { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 },
     keys: new Set(),
     pointer: null,           // {x, y} in screen coords while touching/clicking
-    others: new Map(),       // peerId -> {x, y, tx, ty, name, color} for everyone else in the arena
+    others: new Map(),
+    walls: [],               // {id, x1, y1, x2, y2, color, born}
+    drawing: false,          // mouse button held
+    mouse: null,             // mouse position on screen while drawing
+    lastDrawPt: null,        // world point the current line ended at
+    myInk: INK_MAX,       // peerId -> {x, y, tx, ty, name, color} for everyone else in the arena
   };
 
   // ================= Multiplayer (server) =================
@@ -234,6 +247,13 @@
   });
   socket.on("disconnect", () => { myId = null; lastInput = ""; updateCounts(); });
   socket.on("welcome", (data) => { myId = data.id; lastInput = ""; });
+  socket.on("walls", (list) => {
+    const now = performance.now();
+    state.walls = list.map((w) => ({ ...w, born: now - (w.age || 0) }));
+  });
+  socket.on("wall", (w) => {
+    state.walls.push({ ...w, born: performance.now() - (w.age || 0) });
+  });
 
   socket.on("state", (data) => {
     online = data.online || 0;
@@ -243,6 +263,8 @@
         // correct our own predicted position toward what the server says
         const p = state.player;
         if (p) {
+          p.ink = sp.ink;
+          state.myInk = (sp.ink / 100) * INK_MAX;
           const off = Math.hypot(sp.x - p.x, sp.y - p.y);
           if (off > 150) { p.x = sp.x; p.y = sp.y; }
           else { p.x += (sp.x - p.x) * 0.15; p.y += (sp.y - p.y) * 0.15; }
@@ -252,7 +274,7 @@
       seen.add(sp.id);
       let o = state.others.get(sp.id);
       if (!o) { o = { x: sp.x, y: sp.y }; state.others.set(sp.id, o); }
-      o.tx = sp.x; o.ty = sp.y; o.name = sp.name; o.color = sp.color;
+      o.tx = sp.x; o.ty = sp.y; o.name = sp.name; o.color = sp.color; o.ink = sp.ink;
     }
     for (const id of state.others.keys()) if (!seen.has(id)) state.others.delete(id);
     updateCounts();
@@ -366,6 +388,9 @@
     state.keys.clear();
     state.screen = "game";
     lastInput = "";
+    state.myInk = INK_MAX;
+    state.player.ink = 100;
+    canvas.classList.add("drawable");
     socket.emit("join", { name: state.name, color: state.color });
     updateCounts();
     menu.classList.add("hidden");
@@ -377,6 +402,8 @@
     state.screen = "menu";
     state.player = null;
     state.pointer = null;
+    state.drawing = false; state.mouse = null; state.lastDrawPt = null;
+    canvas.classList.remove("drawable");
     myId = null;
     socket.emit("leave");
     updateCounts();
@@ -396,11 +423,66 @@
   window.addEventListener("keyup", e => state.keys.delete(e.code));
   window.addEventListener("blur", () => state.keys.clear());
 
-  // Touch / mouse: hold to move toward the pointer (so it works on phones too)
-  canvas.addEventListener("pointerdown", e => { if (state.screen === "game") state.pointer = { x: e.clientX, y: e.clientY }; });
-  canvas.addEventListener("pointermove", e => { if (state.pointer) state.pointer = { x: e.clientX, y: e.clientY }; });
-  ["pointerup", "pointercancel", "pointerleave"].forEach(ev =>
-    canvas.addEventListener(ev, () => { state.pointer = null; }));
+  // Mouse: click and drag to draw walls. Touch: hold to move toward your finger.
+  canvas.addEventListener("pointerdown", e => {
+    if (state.screen !== "game") return;
+    if (e.pointerType === "touch") {
+      state.pointer = { x: e.clientX, y: e.clientY };
+    } else if (e.button === 0) {
+      canvas.setPointerCapture(e.pointerId);
+      state.drawing = true;
+      state.mouse = { x: e.clientX, y: e.clientY };
+      state.lastDrawPt = screenToWorld(state.mouse);
+    }
+  });
+  canvas.addEventListener("pointermove", e => {
+    if (e.pointerType === "touch") { if (state.pointer) state.pointer = { x: e.clientX, y: e.clientY }; }
+    else if (state.drawing) state.mouse = { x: e.clientX, y: e.clientY };
+  });
+  function stopPointer(e) {
+    if (e.pointerType === "touch") state.pointer = null;
+    else { state.drawing = false; state.mouse = null; state.lastDrawPt = null; }
+  }
+  ["pointerup", "pointercancel"].forEach(ev => canvas.addEventListener(ev, stopPointer));
+  canvas.addEventListener("pointerleave", e => { if (e.pointerType === "touch") state.pointer = null; });
+
+  function screenToWorld(pt) {
+    return { x: state.camera.x + (pt.x - view.w / 2), y: state.camera.y + (pt.y - view.h / 2) };
+  }
+
+  // Turn the mouse path into short line pieces and send them to the server
+  function handleDrawing() {
+    if (!state.drawing || !state.mouse || !state.lastDrawPt) return;
+    const cur = screenToWorld(state.mouse);
+    let from = state.lastDrawPt;
+    let dist = Math.hypot(cur.x - from.x, cur.y - from.y);
+    while (dist >= MIN_SEGMENT && state.myInk >= 1 && socket.connected) {
+      const step = Math.min(dist, MAX_SEGMENT, state.myInk);
+      const to = { x: from.x + (cur.x - from.x) / dist * step, y: from.y + (cur.y - from.y) / dist * step };
+      socket.emit("draw", { x1: from.x, y1: from.y, x2: to.x, y2: to.y });
+      state.myInk -= step;
+      from = to;
+      dist = Math.hypot(cur.x - from.x, cur.y - from.y);
+    }
+    // out of ink: keep the pen "attached" to the mouse so it doesn't jump when ink comes back
+    state.lastDrawPt = state.myInk < 1 ? cur : from;
+  }
+
+  // Same wall push-out as the server, so our own movement feels right
+  function pushOut(p, w) {
+    const vx = w.x2 - w.x1, vy = w.y2 - w.y1;
+    const len2 = vx * vx + vy * vy;
+    let t = len2 ? ((p.x - w.x1) * vx + (p.y - w.y1) * vy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx = w.x1 + vx * t, cy = w.y1 + vy * t;
+    let dx = p.x - cx, dy = p.y - cy;
+    let d = Math.hypot(dx, dy);
+    const min = p.r + WALL_HALF;
+    if (d >= min) return;
+    if (d < 0.001) { dx = -vy; dy = vx; d = Math.hypot(dx, dy) || 1; }
+    p.x = cx + (dx / d) * min;
+    p.y = cy + (dy / d) * min;
+  }
 
   function getMoveDirection() {
     const k = state.keys;
@@ -421,6 +503,8 @@
   let idleT = 0;
   function update(dt) {
     smoothOthers(dt);
+    const now = performance.now();
+    state.walls = state.walls.filter(w => now - w.born < WALL_LIFE + WALL_FADE);
     if (state.screen === "game" && state.player) {
       const p = state.player;
       const { dx, dy } = getMoveDirection();
@@ -428,6 +512,9 @@
       // move locally right away (prediction) so controls feel instant
       p.x += dx * PLAYER_SPEED * dt;
       p.y += dy * PLAYER_SPEED * dt;
+      // bump into drawn walls that are still solid
+      for (let i = 0; i < 2; i++)
+        for (const w of state.walls) if (now - w.born < WALL_LIFE) pushOut(p, w);
       // keep inside the arena walls
       p.x = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.x));
       p.y = Math.max(p.r, Math.min(WORLD_SIZE - p.r, p.y));
@@ -435,6 +522,7 @@
       const t = Math.min(1, dt * 10);
       state.camera.x += (p.x - state.camera.x) * t;
       state.camera.y += (p.y - state.camera.y) * t;
+      handleDrawing();
     } else if (!reducedMotion) {
       // slow drift behind the menu
       idleT += dt;
@@ -495,6 +583,45 @@
     ctx.strokeText(p.name, sx, sy);
     ctx.fillStyle = "#fff";
     ctx.fillText(p.name, sx, sy);
+
+    // ink bar under the player
+    if (typeof p.ink === "number") {
+      const bw = 56, bh = 7, bx = sx - bw / 2, by = sy + p.r + 9;
+      const frac = Math.max(0, Math.min(1, p.ink / 100));
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 5); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      roundRect(bx, by, bw, bh, 3.5); ctx.fill();
+      if (frac > 0) { ctx.fillStyle = p.color; roundRect(bx, by, bw * frac, bh, 3.5); ctx.fill(); }
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawWalls(ox, oy) {
+    const now = performance.now();
+    ctx.lineCap = "round";
+    ctx.lineWidth = WALL_HALF * 2;
+    for (const w of state.walls) {
+      const age = now - w.born;
+      const alpha = age < WALL_LIFE ? 1 : Math.max(0, 1 - (age - WALL_LIFE) / WALL_FADE);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = darken(w.color, 0.85);
+      ctx.beginPath();
+      ctx.moveTo(w.x1 + ox, w.y1 + oy);
+      ctx.lineTo(w.x2 + ox, w.y2 + oy);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   function render() {
@@ -529,8 +656,10 @@
     }
     ctx.stroke();
 
+    drawWalls(ox, oy);
+
     for (const o of state.others.values()) {
-      drawPlayer({ x: o.x, y: o.y, r: PLAYER_RADIUS, name: o.name, color: o.color }, o.x + ox, o.y + oy);
+      drawPlayer({ x: o.x, y: o.y, r: PLAYER_RADIUS, name: o.name, color: o.color, ink: o.ink }, o.x + ox, o.y + oy);
     }
     if (state.player) drawPlayer(state.player, state.player.x + ox, state.player.y + oy);
 
