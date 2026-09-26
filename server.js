@@ -56,6 +56,23 @@ const BULLET_DAMAGE = 12;
 const HP_MAX = 100;
 const HP_REGEN = 1;
 const KILL_HEAL = 0.9;        // fraction of your max health you get back for a kill
+// Combat tag: if you hit someone or got hit in the last 10 seconds, leaving the game
+// (menu, closing the tab, refreshing, switching modes) counts as being eliminated,
+// and whoever was fighting you gets the kill. Stops people leaving to escape a fight.
+const COMBAT_TAG = 10000;
+
+// ---------------- Catch-up rules (so one strong player can't snowball forever) ----------------
+// 1) Bounty: 3+ kills in one life puts a bounty on you (gold crown, gold on the minimap).
+//    Whoever ends the streak gets 1 extra upgrade for every 2 kills it had (max 4 extra).
+// 2) Underdog damage: shooting someone with more upgrades than you does +5% damage per
+//    upgrade of difference (max +50%).
+// 3) Slower growth at the top: after 5 upgrades, kills only give an upgrade every other time.
+//    (Crates, mercy and bounty bonuses still count fully.)
+const BOUNTY_AT = 3;
+const BOUNTY_MAX_BONUS = 4;
+const UNDERDOG_PER_LEVEL = 0.05, UNDERDOG_MAX = 0.5;
+const SLOW_GROWTH_AFTER = 5;
+const upgradeCount = (p) => Object.values(p.levels).reduce((a, b) => a + b, 0);
 
 // Drawing / walls (right click)
 const INK_MAX = 450;
@@ -319,6 +336,7 @@ class Arena {
       drawRange: DRAW_RANGE, inkMax: INK_MAX, wallLife: WALL_LIFE, speedMult: 1,
       staminaMax: STAMINA_MAX, dashCooldown: DASH_COOLDOWN,
       levels: {}, kills: 0, offer: null, pendingPicks: 0, mercyLeft: 0,
+      lastCombat: 0, lastAttacker: null, lastHitAt: 0,
     };
     CLASSES[cls].apply(p);
     p.hp = p.maxHp; p.ink = p.inkMax; p.stamina = p.staminaMax;
@@ -336,7 +354,16 @@ class Arena {
     socket.emit("crates", this.crates);
     if (mercy) this.makeOffer(p, true);
   }
-  removePlayer(id) { this.players.delete(id); }
+  // Leaving the arena. Out of combat: you just go. In combat: it counts as an elimination.
+  removePlayer(id) {
+    const p = this.players.get(id);
+    if (!p) return;
+    const now = Date.now();
+    if (now - p.lastCombat < COMBAT_TAG) {
+      const attacker = p.lastAttacker && now - p.lastHitAt < COMBAT_TAG ? this.players.get(p.lastAttacker) : null;
+      this.eliminate(p, attacker, true);
+    } else this.players.delete(id);
+  }
 
   // ----- actions from a player -----
   input(p, data) {
@@ -372,7 +399,7 @@ class Arena {
       return;
     }
     const b = {
-      id: this.nextBulletId++, owner: p.id, team: p.team, color: p.color, born: now, dmg: p.dmg,
+      id: this.nextBulletId++, owner: p.id, team: p.team, color: p.color, born: now, dmg: p.dmg, up: upgradeCount(p),
       x: mx, y: my, vx: ux * p.bulletSpeed, vy: uy * p.bulletSpeed,
     };
     this.bullets.push(b);
@@ -482,8 +509,15 @@ class Arena {
           if (p.id === b.owner) continue;
           if (b.team && p.team === b.team) continue;     // no friendly fire
           if (Math.hypot(p.x - b.x, p.y - b.y) < PLAYER_RADIUS + BULLET_RADIUS) {
-            p.hp -= b.dmg;
-            hits.push({ id: p.id, x: Math.round(b.x), y: Math.round(b.y), by: b.owner, dmg: b.dmg });
+            // underdog bonus: hitting someone stronger than you hurts more
+            const gap = upgradeCount(p) - b.up;
+            const boost = gap > 0 ? Math.min(UNDERDOG_MAX, gap * UNDERDOG_PER_LEVEL) : 0;
+            const dmg = Math.round(b.dmg * (1 + boost));
+            p.hp -= dmg;
+            p.lastCombat = now; p.lastHitAt = now; p.lastAttacker = b.owner;
+            const shooter = this.players.get(b.owner);
+            if (shooter) shooter.lastCombat = now;
+            hits.push({ id: p.id, x: Math.round(b.x), y: Math.round(b.y), by: b.owner, dmg, boosted: boost > 0 });
             goneBullets.push(b.id);
             return false;
           }
@@ -502,7 +536,7 @@ class Arena {
     if (this.active) this.sendState(now);
   }
 
-  eliminate(p, killer) {
+  eliminate(p, killer, fled = false) {
     this.players.delete(p.id);
     // Mercy rule: two kill-less deaths in a row -> 1 free upgrade, then 2, then 3 (max).
     // Any kill resets it.
@@ -510,7 +544,7 @@ class Arena {
     let mercyNext = 0;
     if (vs) {
       const d = vs.data;
-      if (p.kills > 0) { d.dry = 0; d.lastMercy = 0; }
+      if (p.kills > 0 || fled) { d.dry = 0; d.lastMercy = 0; }   // leaving mid-fight never earns mercy upgrades
       else {
         d.dry = (d.dry || 0) + 1;
         if (d.lastMercy > 0) mercyNext = Math.min(3, d.lastMercy + 1);
@@ -518,16 +552,27 @@ class Arena {
       }
       d.mercyNext = mercyNext;
     }
-    io.to(p.id).emit("died", { by: killer ? killer.name : "someone", kills: p.kills, mercy: mercyNext, mode: this.mode });
+    io.to(p.id).emit("died", { by: killer ? killer.name : "someone", kills: p.kills, mercy: mercyNext, mode: this.mode, fled });
     this.emit("eliminated", { id: p.id, x: Math.round(p.x), y: Math.round(p.y), color: p.color });
     if (killer) {
       killer.kills++;
       const heal = Math.round(killer.maxHp * KILL_HEAL);
       killer.hp = Math.min(killer.maxHp, killer.hp + heal);
-      killer.pendingPicks++;
+      // upgrades from kills slow down once you're strong
+      let picks = 1;
+      if (upgradeCount(killer) + killer.pendingPicks >= SLOW_GROWTH_AFTER) {
+        killer.halfPick = !killer.halfPick;
+        picks = killer.halfPick ? 0 : 1;
+      }
+      // ending someone's streak pays out their bounty
+      const bonus = p.kills >= BOUNTY_AT ? Math.min(BOUNTY_MAX_BONUS, Math.floor(p.kills / 2)) : 0;
+      picks += bonus;
+      killer.pendingPicks += picks;
       this.sendStats(killer);
-      io.to(killer.id).emit("kill", { name: p.name, heal });
-      if (!killer.offer) this.makeOffer(killer);
+      io.to(killer.id).emit("kill", { name: p.name, heal, fled, bonus, noPick: picks === 0 });
+      if (bonus) this.emit("bountyClaimed", { killer: killer.name, victim: p.name, streak: p.kills, bonus });
+      if (killer.kills === BOUNTY_AT) this.emit("bountyOn", { name: killer.name, id: killer.id });
+      if (!killer.offer && killer.pendingPicks > 0) this.makeOffer(killer);
       if (this.mode === "team" && killer.team) {
         this.scores[killer.team]++;
         if (this.scores[killer.team] >= TEAM_TARGET) teamLobby.endMatch(killer.team);
@@ -548,6 +593,8 @@ class Arena {
       exhausted: p.exhausted, dashing: now < p.dashUntil,
       dashCd: Math.max(0, p.dashReadyAt - now),
       aim: Math.round(p.aim * 100) / 100, kills: p.kills,
+      combat: Math.max(0, COMBAT_TAG - (now - p.lastCombat)),
+      lv: upgradeCount(p), bounty: p.kills >= BOUNTY_AT,
       fresh: now - p.spawnedAt < 700,
     }));
     const room = io.sockets.adapter.rooms.get(this.room);
@@ -563,7 +610,7 @@ class Arena {
         const ally = me && me.team && p.team === me.team;
         if (p.id === sid || near || ally) return q;
         return {
-          id: q.id, name: q.name, color: q.color, team: q.team, kills: q.kills, far: true,
+          id: q.id, name: q.name, color: q.color, team: q.team, kills: q.kills, far: true, bounty: q.bounty,
           ax: Math.floor(p.x / AREA_CELL), ay: Math.floor(p.y / AREA_CELL),
         };
       });

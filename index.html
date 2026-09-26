@@ -442,6 +442,24 @@
   .team-badge { position: absolute; left: 50%; transform: translateX(-50%); top: calc(2.9rem + env(safe-area-inset-top, 0px));
     font-weight: 700; font-size: 0.85rem; color: #fff; padding: 0.1rem 0.7rem; border-radius: 999px; }
   .team-badge.hidden { display: none; }
+  .combat-tag {
+    position: absolute; left: 50%; transform: translateX(-50%); top: calc(4.6rem + env(safe-area-inset-top, 0px));
+    display: flex; align-items: center; gap: 0.35rem; font-weight: 700; font-size: 0.85rem; color: #fff;
+    background: #b91c1c; padding: 0.15rem 0.7rem; border-radius: 999px; box-shadow: 0 3px 10px rgba(185,28,28,0.35);
+    animation: titlePop 260ms cubic-bezier(.2,.9,.3,1.5) both;
+  }
+  #combatTag:not(.hidden) ~ .upgrades { top: calc(6.3rem + env(safe-area-inset-top, 0px)); }
+  .leave-warn {
+    position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); pointer-events: auto;
+    max-width: min(24rem, calc(100vw - 2rem)); text-align: center; background: var(--panel); color: var(--ink);
+    border: 3px solid #b91c1c; border-radius: 1.2rem; padding: 0.9rem 1.1rem; box-shadow: 0 1rem 2.5rem rgba(0,0,0,0.3);
+    animation: titlePop 300ms cubic-bezier(.2,.9,.3,1.4) both;
+  }
+  .leave-warn b { display: block; color: #b91c1c; font-size: 1.15rem; margin-bottom: 0.25rem; }
+  .leave-warn p { margin: 0 0 0.7rem; color: var(--ink-soft); font-size: 0.95rem; }
+  .leave-warn .row { display: flex; gap: 0.5rem; justify-content: center; }
+  .leave-warn button { font: inherit; font-weight: 600; cursor: pointer; border-radius: 0.8rem; padding: 0.45rem 0.9rem; border: 2px solid var(--panel-edge); background: var(--arena); color: var(--ink); }
+  .leave-warn button.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
   .team-badge.red { background: #ef4444; } .team-badge.blue { background: #3b82f6; }
 
   /* ---------- Settings ---------- */
@@ -596,6 +614,18 @@
   <button type="button" class="gear" id="hudGear" data-open-settings aria-label="Settings (B)" title="Settings (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   <div class="perf hidden" id="perf">-- fps</div>
   <div class="team-badge hidden" id="teamBadge"></div>
+  <div class="combat-tag hidden" id="combatTag" role="status">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 4l10 10M14 4 4 14M15 15l5 5M20 15l-5 5"/></svg>
+    <span id="combatText">In combat</span>
+  </div>
+  <div class="leave-warn hidden" id="leaveWarn" role="alertdialog" aria-labelledby="lwTitle">
+    <b id="lwTitle">You're in combat!</b>
+    <p>Leaving now counts as being eliminated, and whoever you're fighting gets the kill. Wait <span id="lwSecs">10</span>s to leave safely.</p>
+    <div class="row">
+      <button type="button" id="lwStay">Keep playing</button>
+      <button type="button" class="danger" id="lwLeave">Leave anyway</button>
+    </div>
+  </div>
   <button type="button" class="hud-tip hud-scale" id="leaveBtn"><span class="desk">Esc to leave</span><span class="tch">Leave</span><span class="padk">Options to leave</span><span id="count"></span><span id="kills">Kills 0</span></button>
   <div class="health hud-scale" aria-label="Health">
     <div class="health-track"><div class="health-ghost" id="hpGhost"></div><div class="health-fill" id="hpFill"></div><div class="health-text" id="hpText">100</div></div>
@@ -1063,7 +1093,8 @@
       if (h.id === myId) { state.hurtFlash = 1; rumble(120, 0.6); addShake(9); }
       if (h.by === myId) {
         state.hitmarker = now;
-        if (settings.dmgNumbers) state.floaters.push({ x: h.x + (Math.random() - 0.5) * 20, y: h.y - 18, text: "-" + (h.dmg || ""), t: now });
+        if (settings.dmgNumbers) state.floaters.push({ x: h.x + (Math.random() - 0.5) * 20, y: h.y - 18,
+          text: "-" + (h.dmg || "") + (h.boosted ? "!" : ""), t: now, color: h.boosted ? "#fb923c" : "#fde047" });
       }
     }
   });
@@ -1080,7 +1111,10 @@
     state.others.delete(id);
   });
 
-  socket.on("died", ({ by, kills, mercy }) => showDeath(String(by).slice(0, 16), kills || 0, Number(mercy) || 0));
+  socket.on("died", ({ by, kills, mercy }) => {
+    if (state.screen !== "game") return;   // we already left (e.g. left mid-fight): nothing to show
+    showDeath(String(by).slice(0, 16), kills || 0, Number(mercy) || 0);
+  });
 
   socket.on("stats", (st) => {
     const before = state.stats.kills;
@@ -1094,8 +1128,17 @@
     const p = state.player;
     if (p) { burst(p.x, p.y, "#38bdf8", 16, 1.2); state.rings.push({ x: p.x, y: p.y, t: performance.now(), color: "#38bdf8" }); }
   });
-  socket.on("kill", ({ name, heal }) => {
-    toast(`You eliminated ${String(name).slice(0, 16)}  +${heal} HP`);
+  socket.on("bountyOn", ({ name, id }) => {
+    toast(id === myId ? "You have a bounty! Everyone can see you're strong." : `${String(name).slice(0, 16)} is on a streak! Bounty is up.`);
+  });
+  socket.on("bountyClaimed", ({ killer, victim, streak, bonus }) => {
+    toast(`${String(killer).slice(0, 16)} ended ${String(victim).slice(0, 16)}'s ${streak}-kill streak! +${bonus} bonus`);
+  });
+  socket.on("kill", ({ name, heal, fled, bonus, noPick }) => {
+    if (bonus) setTimeout(() => toast(`Bounty claimed! +${bonus} bonus upgrade${bonus > 1 ? "s" : ""}`), 1400);
+    else if (noPick) setTimeout(() => toast("You're strong now: upgrades come every other kill"), 1400);
+    toast(fled ? `${String(name).slice(0, 16)} left mid-fight. Kill is yours! +${heal} HP`
+               : `You eliminated ${String(name).slice(0, 16)}  +${heal} HP`);
     rumble(250, 1);
     state.hurtFlash = 0;
     addShake(6);
@@ -1118,13 +1161,15 @@
         state.myInk = (sp.ink / 100) * state.stats.inkMax;
         state.hp = sp.hp; p.hp = sp.hp;
         state.stamina = sp.stamina; state.exhausted = sp.exhausted;
+        state.combatUntil = now + (sp.combat || 0);
+        p.lv = sp.lv || 0; p.bounty = !!sp.bounty;
         if (now - state.lastLocalDash > 600) state.dashReadyAt = now + sp.dashCd;
         continue;
       }
       if (sp.far) {
         // too far away to see: we only know roughly which area they're in
         state.others.delete(sp.id);
-        state.far.set(sp.id, { ax: sp.ax, ay: sp.ay, color: HEX.test(sp.color) ? sp.color : "#64748b", team: sp.team });
+        state.far.set(sp.id, { ax: sp.ax, ay: sp.ay, color: HEX.test(sp.color) ? sp.color : "#64748b", team: sp.team, bounty: !!sp.bounty });
         continue;
       }
       state.far.delete(sp.id);
@@ -1138,6 +1183,7 @@
         }
       }
       o.team = sp.team;
+      o.lv = sp.lv || 0; o.bounty = !!sp.bounty;
       o.tx = sp.x; o.ty = sp.y; o.name = sp.name;
       o.color = HEX.test(sp.color) ? sp.color : "#64748b";
       o.cls = sp.cls;
@@ -1510,6 +1556,7 @@
       stats: { ...BASE_STATS },
     });
     state.touch.move = state.touch.aim = null;
+    state.combatUntil = 0;
     hideOffer();
     killsEl.textContent = "Kills 0";
     deathEl.classList.add("hidden");
@@ -1550,7 +1597,7 @@
   window.addEventListener("keydown", (e) => {
     if (state.screen === "lobby" && e.code === "Escape" && !settingsOpen()) { backToMenu(); return; }
     if (state.screen !== "game") return;
-    if (e.code === "Escape") { backToMenu(); return; }
+    if (e.code === "Escape") { requestLeave(); return; }
     if (MOVE_KEYS.includes(e.code) || e.code === "ShiftLeft" || e.code === "ShiftRight") {
       state.keys.add(e.code); e.preventDefault();
     }
@@ -1668,7 +1715,7 @@
       if (pressed(PAD.LEFT)) pickUpgrade(0);
       if (pressed(PAD.UP)) pickUpgrade(1);
       if (pressed(PAD.RIGHT)) pickUpgrade(2);
-      if (pressed(PAD.OPTIONS)) backToMenu();
+      if (pressed(PAD.OPTIONS)) requestLeave();
     } else {
       // menu + death screen: D-pad = class, L1/R1 = color, Cross = play / respawn
       const ci = CLASSES.findIndex((c) => c.key === state.cls);
@@ -1745,7 +1792,17 @@
     $("drawToggle").setAttribute("aria-pressed", String(state.touch.drawMode));
   });
   dashRing.addEventListener("pointerdown", (e) => { if (e.pointerType === "touch") { e.preventDefault(); tryDash(); } });
-  $("leaveBtn").addEventListener("click", () => backToMenu());
+  $("leaveBtn").addEventListener("click", () => requestLeave());
+  // Leaving mid-fight asks first. Pressing leave a second time (or "Leave anyway") goes.
+  const leaveWarn = $("leaveWarn");
+  function requestLeave() {
+    const inCombat = state.screen === "game" && performance.now() < (state.combatUntil || 0);
+    if (!inCombat || !leaveWarn.classList.contains("hidden")) { leaveWarn.classList.add("hidden"); backToMenu(); return; }
+    leaveWarn.classList.remove("hidden");
+    if (state.inputMode !== "touch") $("lwStay").focus();
+  }
+  $("lwStay").addEventListener("click", () => leaveWarn.classList.add("hidden"));
+  $("lwLeave").addEventListener("click", () => { leaveWarn.classList.add("hidden"); backToMenu(); });
 
   function screenToWorld(pt) {
     return { x: state.camera.x + (pt.x - view.w / 2), y: state.camera.y + (pt.y - view.h / 2) };
@@ -2038,6 +2095,11 @@
   }
 
   function updateHud(now) {
+    const combatLeft = Math.max(0, (state.combatUntil || 0) - now);
+    $("combatTag").classList.toggle("hidden", combatLeft <= 0);
+    if (combatLeft > 0) $("combatText").textContent = `In combat ${Math.ceil(combatLeft / 1000)}s`;
+    $("lwSecs").textContent = Math.ceil(combatLeft / 1000);
+    if (combatLeft <= 0 && !leaveWarn.classList.contains("hidden")) leaveWarn.classList.add("hidden");
     renderBoard();
     const maxHp = state.stats.maxHp;
     const hp = Math.max(0, Math.min(maxHp, state.hp));
@@ -2316,8 +2378,28 @@
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.lineWidth = 3.5; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(0,0,0,0.55)";
     const shownName = opts.showHp && settings.names === "hide" && !opts.ally ? "Player" : p.name;
+    if (p.bounty) {
+      // bounty: pulsing gold ring on the ground + a crown over the name
+      const k = reducedMotion ? 0.6 : 0.5 + 0.5 * Math.sin(now / 220);
+      ctx.beginPath(); ctx.ellipse(sx, sy + p.r * 0.95, p.r * (1.2 + k * 0.15), p.r * (0.42 + k * 0.05), 0, 0, Math.PI * 2);
+      ctx.lineWidth = 4; ctx.strokeStyle = `rgba(250,204,21,${0.55 + k * 0.4})`; ctx.stroke();
+      const cy = sy - p.r - 34 - (opts.showHp ? 6 : 0);
+      ctx.save(); ctx.translate(sx, cy);
+      ctx.beginPath(); ctx.moveTo(-11, 6); ctx.lineTo(-13, -6); ctx.lineTo(-5, 0); ctx.lineTo(0, -9); ctx.lineTo(5, 0); ctx.lineTo(13, -6); ctx.lineTo(11, 6); ctx.closePath();
+      ctx.fillStyle = "#facc15"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#a16207"; ctx.stroke();
+      ctx.restore();
+    }
     ctx.strokeText(shownName, sx, sy - p.r - 9);
     ctx.fillStyle = "#fff"; ctx.fillText(shownName, sx, sy - p.r - 9);
+    if (p.lv > 0) {
+      // level badge: how many upgrades this player has
+      const tw = ctx.measureText(shownName).width, label = "Lv " + p.lv;
+      ctx.font = "700 11px Fredoka, 'Trebuchet MS', sans-serif";
+      const bw = ctx.measureText(label).width + 10, bx = sx + tw / 2 + 5, by = sy - p.r - 16;
+      roundRect(bx, by, bw, 14, 7);
+      ctx.fillStyle = p.lv >= 8 ? "#dc2626" : p.lv >= 5 ? "#f59e0b" : "#38bdf8"; ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.fillText(label, bx + 5, by + 7.5); ctx.textAlign = "center";
+    }
 
     // health bar above other players' names
     if (opts.showHp && typeof p.hp === "number") {
@@ -2466,7 +2548,7 @@
     if (state.player) drawTrail("me", state.player.color, ox, oy, now);
 
     for (const [id, o] of state.others) {
-      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, cls: o.cls, ink: o.ink, hp: o.hp, maxHp: o.maxHp }, o.x + ox, o.y + oy,
+      drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, cls: o.cls, ink: o.ink, hp: o.hp, maxHp: o.maxHp, lv: o.lv, bounty: o.bounty }, o.x + ox, o.y + oy,
         { showHp: true, aim: o.aim || 0, firedAt: state.recoil.get(id), now, moving: o.moving,
           teamColor: o.team ? TEAM_COLORS[o.team] : null, ally: !!(o.team && o.team === state.team),
           spawnK: state.spawnT.has(id) ? Math.min(1, (now - state.spawnT.get(id)) / 480) : 1 });
@@ -2504,7 +2586,7 @@
       ctx.globalAlpha = 1 - Math.max(0, (k - 0.55) / 0.45);
       ctx.font = "700 20px Fredoka, 'Trebuchet MS', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.strokeText(f.text, 0, 0);
-      ctx.fillStyle = "#fde047"; ctx.fillText(f.text, 0, 0);
+      ctx.fillStyle = f.color || "#fde047"; ctx.fillText(f.text, 0, 0);
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -2649,15 +2731,19 @@
     for (const c of state.crates.values()) mctx.fillRect(pad + c.x * scale - 2.5, pad + c.y * scale - 2.5, 5, 5);
     // enemies only show as a soft glow over the rough area they're in (never an exact dot)
     const areas = new Map();
-    const addArea = (ax, ay, color) => { const k = ax + "," + ay; if (!areas.has(k)) areas.set(k, { ax, ay, color }); };
-    for (const o of state.others.values()) if (!(o.team && o.team === state.team)) addArea(Math.floor(o.x / AREA_CELL), Math.floor(o.y / AREA_CELL), o.color);
-    for (const f of state.far.values()) if (!(f.team && f.team === state.team)) addArea(f.ax, f.ay, f.color);
+    const addArea = (ax, ay, color, bounty) => {
+      const k = ax + "," + ay, cur = areas.get(k);
+      if (!cur || bounty) areas.set(k, { ax, ay, color: bounty ? "#facc15" : color, bounty });
+    };
+    for (const o of state.others.values()) if (!(o.team && o.team === state.team)) addArea(Math.floor(o.x / AREA_CELL), Math.floor(o.y / AREA_CELL), o.color, o.bounty);
+    for (const f of state.far.values()) if (!(f.team && f.team === state.team)) addArea(f.ax, f.ay, f.color, f.bounty);
     const pulse = reducedMotion ? 0.8 : 0.65 + 0.35 * Math.sin(performance.now() / 400);
     for (const a of areas.values()) {
       const cx = pad + (a.ax + 0.5) * AREA_CELL * scale, cy = pad + (a.ay + 0.5) * AREA_CELL * scale, r = AREA_CELL * scale * 0.62;
-      const g = mctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, a.color + "99"); g.addColorStop(1, a.color + "00");
-      mctx.globalAlpha = pulse; mctx.fillStyle = g; mctx.beginPath(); mctx.arc(cx, cy, r, 0, Math.PI * 2); mctx.fill();
+      const rr = a.bounty ? r * 1.35 : r;
+      const g = mctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
+      g.addColorStop(0, a.color + (a.bounty ? "dd" : "99")); g.addColorStop(1, a.color + "00");
+      mctx.globalAlpha = pulse; mctx.fillStyle = g; mctx.beginPath(); mctx.arc(cx, cy, rr, 0, Math.PI * 2); mctx.fill();
     }
     mctx.globalAlpha = 1;
     // teammates: exact
