@@ -64,12 +64,13 @@ const UPGRADES = {
 
 // ---------------- Classes (picked in the menu or on the death screen) ----------------
 // Every class trades something for its strength. Damage per second stays close
-// for all of them: Soldier 75, Gunner 78, Sniper 70, Artist 69.
+// for all of them: Soldier 75, Gunner 78, Sniper 63, Artist 69.
+// Sniper was too strong (long range + big hits), so it now has less health too.
 const CLASSES = {
-  soldier: { name: "Soldier", apply: () => {} },
+  soldier: { name: "Soldier", apply: (p) => { p.regen += 0.5; } },
   tank:    { name: "Tank",    apply: (p) => { p.maxHp = Math.round(p.maxHp * 1.2); p.speedMult -= 0.08; } },
   artist:  { name: "Artist",  apply: (p) => { p.inkMax = Math.round(p.inkMax * 1.2); p.drawRange += 30; p.dmg -= 1; } },
-  sniper:  { name: "Sniper",  apply: (p) => { p.dmg += 3; p.bulletSpeed *= 1.3; p.fireMs = Math.round(p.fireMs * 1.35); } },
+  sniper:  { name: "Sniper",  apply: (p) => { p.dmg += 2; p.bulletSpeed *= 1.2; p.fireMs = Math.round(p.fireMs * 1.4); p.maxHp = Math.round(p.maxHp * 0.9); } },
   scout:   { name: "Scout",   apply: (p) => { p.speedMult += 0.12; p.staminaMax += 25; p.dashCooldown -= 2000; p.maxHp = Math.round(p.maxHp * 0.85); } },
   gunner:  { name: "Gunner",  apply: (p) => { p.fireMs = Math.round(p.fireMs * 0.8); p.dmg -= 2; p.bulletSpeed *= 0.9; } },
 };
@@ -133,6 +134,21 @@ function distToSegment(px, py, x1, y1, x2, y2) {
   let t = len2 ? ((px - x1) * vx + (py - y1) * vy) / len2 : 0;
   t = clamp(t, 0, 1);
   return Math.hypot(px - (x1 + vx * t), py - (y1 + vy * t));
+}
+
+// Shortest distance between two line segments (used so fast bullets can't skip walls)
+function segSegDist(ax, ay, bx, by, cx, cy, dx, dy) {
+  const cross = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  const d1 = cross(cx, cy, dx, dy, ax, ay), d2 = cross(cx, cy, dx, dy, bx, by);
+  const d3 = cross(ax, ay, bx, by, cx, cy), d4 = cross(ax, ay, bx, by, dx, dy);
+  if (((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0))) return 0;   // they cross
+  return Math.min(
+    distToSegment(ax, ay, cx, cy, dx, dy), distToSegment(bx, by, cx, cy, dx, dy),
+    distToSegment(cx, cy, ax, ay, bx, by), distToSegment(dx, dy, ax, ay, bx, by));
+}
+function blockedByWall(x1, y1, x2, y2, pad) {
+  for (const w of walls) if (segSegDist(x1, y1, x2, y2, w.x1, w.y1, w.x2, w.y2) < WALL_HALF + pad) return true;
+  return false;
 }
 
 // Keep a player out of walls. Each pass, push away from only the CLOSEST
@@ -218,6 +234,29 @@ function pointInObstacle(x, y, pad) {
     : x > o.x - pad && x < o.x + o.w + pad && y > o.y - pad && y < o.y + o.h + pad);
 }
 
+// ---------------- Upgrade crates ----------------
+// Walk over one to get an upgrade pick. A new one drops every CRATE_EVERY ms,
+// up to a cap that grows a little with more players.
+const CRATE_EVERY = 16000;
+const CRATE_RADIUS = 22;
+let crates = [];
+let nextCrateId = 1;
+let lastCrateAt = Date.now() - CRATE_EVERY / 2;
+function crateCap() { return Math.min(6, 2 + Math.ceil(players.size / 2)); }
+function spawnCrate() {
+  for (let i = 0; i < 40; i++) {
+    const x = 200 + Math.random() * (WORLD_SIZE - 400), y = 200 + Math.random() * (WORLD_SIZE - 400);
+    if (pointInObstacle(x, y, 50)) continue;
+    let near = false;
+    for (const q of players.values()) if (Math.hypot(q.x - x, q.y - y) < 350) { near = true; break; }
+    if (near) continue;
+    const c = { id: nextCrateId++, x: Math.round(x), y: Math.round(y) };
+    crates.push(c);
+    io.emit("crate", c);
+    return;
+  }
+}
+
 // Pick a spawn point as far from everyone else as we can find
 function spawnPoint() {
   let best = null, bestScore = -1;
@@ -242,6 +281,7 @@ function readDir(data) {
 // ---------------- Players talking to the server ----------------
 io.on("connection", (socket) => {
   socket.emit("world", { size: WORLD_SIZE, obstacles });
+  socket.emit("crates", crates);
   socket.on("join", (data) => {
     const name = typeof data?.name === "string" ? data.name.trim().slice(0, 16) : "";
     if (!name) return;
@@ -267,9 +307,11 @@ io.on("connection", (socket) => {
     p.x = spot.x; p.y = spot.y;
     players.set(socket.id, p);
     sendStats(p);
-    // mercy: died twice in a row without any upgrades? start with a free pick
-    const mercy = (socket.data.dryDeaths || 0) >= 2;
-    if (mercy) { socket.data.dryDeaths = 0; p.pendingPicks = 1; }
+    // mercy upgrades (worked out when you died, see "died" below)
+    const mercy = socket.data.mercyNext || 0;
+    socket.data.lastMercy = mercy;
+    socket.data.mercyNext = 0;
+    if (mercy) { p.pendingPicks = mercy; p.mercyLeft = mercy; }
     socket.emit("welcome", { id: socket.id, x: p.x, y: p.y });
     const now = Date.now();
     socket.emit("walls", walls.map((w) => ({ id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, color: w.color, life: w.life, age: now - w.born })));
@@ -285,9 +327,10 @@ io.on("connection", (socket) => {
     p.levels[key] = (p.levels[key] || 0) + 1;
     p.pendingPicks = Math.max(0, p.pendingPicks - 1);
     p.offer = null;
+    if (p.mercyLeft > 0) p.mercyLeft--;
     sendStats(p);
-    io.to(p.id).emit("picked", { name: UPGRADES[key].name });
-    if (p.pendingPicks > 0) makeOffer(p);
+    io.to(p.id).emit("picked", { name: UPGRADES[key].name, key });
+    if (p.pendingPicks > 0) makeOffer(p, p.mercyLeft > 0);
   });
 
   socket.on("input", (data) => {
@@ -323,6 +366,12 @@ io.on("connection", (socket) => {
     const ux = dx / l, uy = dy / l;
     p.lastShot = now;
     p.aim = Math.atan2(uy, ux);
+    const mx = p.x + ux * (PLAYER_RADIUS + 8), my = p.y + uy * (PLAYER_RADIUS + 8);
+    // if the barrel is pressed against a wall or rock, the shot hits it right away
+    if (blockedByWall(p.x, p.y, mx, my, BULLET_RADIUS) || pointInObstacle(mx, my, BULLET_RADIUS)) {
+      io.emit("shotBlocked", { owner: p.id, x: Math.round(mx), y: Math.round(my), color: p.color, aim: p.aim });
+      return;
+    }
     const b = {
       id: nextBulletId++, owner: p.id, color: p.color, born: now, dmg: p.dmg,
       x: p.x + ux * (PLAYER_RADIUS + 8), y: p.y + uy * (PLAYER_RADIUS + 8),
@@ -378,6 +427,25 @@ setInterval(() => {
   });
   if (goneWalls.length) io.emit("wallsGone", goneWalls);
 
+  // upgrade crates: drop new ones, and hand them out when someone walks over one
+  if (now - lastCrateAt > CRATE_EVERY && players.size > 0) {
+    lastCrateAt = now;
+    if (crates.length < crateCap()) spawnCrate();
+  }
+  if (crates.length) {
+    crates = crates.filter((c) => {
+      for (const p of players.values()) {
+        if (Math.hypot(p.x - c.x, p.y - c.y) < PLAYER_RADIUS + CRATE_RADIUS) {
+          p.pendingPicks++;
+          io.emit("crateTaken", { id: c.id, by: p.id, x: c.x, y: c.y });
+          if (!p.offer) makeOffer(p);
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
   // move players
   for (const p of players.values()) {
     if (now - p.lastDraw > REGEN_DELAY) p.ink = Math.min(p.inkMax, p.ink + INK_REGEN * dt);
@@ -387,7 +455,7 @@ setInterval(() => {
       // dashing: fly straight and ignore walls
       p.x += p.dashDx * DASH_SPEED * dt;
       p.y += p.dashDy * DASH_SPEED * dt;
-      resolveObstacles(p, PLAYER_RADIUS);   // dashes go through drawn walls, not rocks
+      // dashing goes through walls AND rocks; you get pushed out if you stop inside one
     } else {
       const moving = p.dx !== 0 || p.dy !== 0;
       let speed = PLAYER_SPEED * p.speedMult;
@@ -416,20 +484,17 @@ setInterval(() => {
     if (now - b.born > BULLET_LIFE) { goneBullets.push(b.id); return false; }
     const steps = 4;
     for (let s = 0; s < steps; s++) {
+      const px = b.x, py = b.y;
       b.x += (b.vx * dt) / steps;
       b.y += (b.vy * dt) / steps;
       if (b.x < 0 || b.y < 0 || b.x > WORLD_SIZE || b.y > WORLD_SIZE) { goneBullets.push(b.id); return false; }
-      for (const w of walls) {
-        if (distToSegment(b.x, b.y, w.x1, w.y1, w.x2, w.y2) < WALL_HALF + BULLET_RADIUS) {
-          goneBullets.push(b.id); return false;
-        }
-      }
+      if (blockedByWall(px, py, b.x, b.y, BULLET_RADIUS)) { goneBullets.push(b.id); return false; }
       if (pointInObstacle(b.x, b.y, BULLET_RADIUS)) { goneBullets.push(b.id); return false; }
       for (const p of players.values()) {
         if (p.id === b.owner) continue;
         if (Math.hypot(p.x - b.x, p.y - b.y) < PLAYER_RADIUS + BULLET_RADIUS) {
           p.hp -= b.dmg;
-          hits.push({ id: p.id, x: Math.round(b.x), y: Math.round(b.y), by: b.owner });
+          hits.push({ id: p.id, x: Math.round(b.x), y: Math.round(b.y), by: b.owner, dmg: b.dmg });
           goneBullets.push(b.id);
           return false;
         }
@@ -438,7 +503,7 @@ setInterval(() => {
     return true;
   });
   if (goneBullets.length) io.emit("bulletsGone", goneBullets);
-  if (hits.length) io.emit("hits", hits.map(({ id, x, y }) => ({ id, x, y })));
+  if (hits.length) io.emit("hits", hits);
 
   // anyone out of health is eliminated
   for (const h of hits) {
@@ -446,12 +511,21 @@ setInterval(() => {
     if (!p || p.hp > 0) continue;
     const killer = players.get(h.by);
     players.delete(p.id);
-    const victimSocket = io.sockets.sockets.get(p.id);
-    let mercyNext = false;
-    if (victimSocket) {
-      const hadUpgrades = Object.keys(p.levels).length > 0;
-      victimSocket.data.dryDeaths = hadUpgrades ? 0 : (victimSocket.data.dryDeaths || 0) + 1;
-      mercyNext = victimSocket.data.dryDeaths >= 2;
+    // Mercy rule:
+    //  - die twice in a row with no kills -> next life starts with 1 free upgrade
+    //  - had mercy upgrades and died again with no kills -> one more (max 3)
+    //  - get even one kill -> back to 0, and it takes two kill-less deaths again
+    const vs = io.sockets.sockets.get(p.id);
+    let mercyNext = 0;
+    if (vs) {
+      const d = vs.data;
+      if (p.kills > 0) { d.dry = 0; d.lastMercy = 0; mercyNext = 0; }
+      else {
+        d.dry = (d.dry || 0) + 1;
+        if (d.lastMercy > 0) mercyNext = Math.min(3, d.lastMercy + 1);
+        else if (d.dry >= 2) mercyNext = 1;
+      }
+      d.mercyNext = mercyNext;
     }
     io.to(p.id).emit("died", { by: killer ? killer.name : "someone", kills: p.kills, mercy: mercyNext });
     if (killer) {

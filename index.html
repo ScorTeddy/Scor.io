@@ -63,11 +63,21 @@
     border-radius: 2rem; padding: 2rem 1.75rem 1.75rem;
     display: flex; flex-direction: column; align-items: center; gap: 1.25rem;
     box-shadow: 0 1.25rem 3rem -1.5rem rgba(20, 40, 30, 0.35);
+    animation: cardIn 560ms cubic-bezier(.2,.9,.25,1.15) both;
   }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(26px) scale(.94); } to { opacity: 1; transform: none; } }
+  #preview { animation: float 3.2s ease-in-out infinite; }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  h1 .dot {
+    background: linear-gradient(90deg, #22c55e, #38bdf8, #a855f7, #ec4899, #22c55e);
+    background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: hue 6s linear infinite;
+  }
+  @keyframes hue { to { background-position: 300% 0; } }
   h1 {
     margin: 0; font-size: 2.75rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
   }
-  h1 .dot { color: var(--ink-soft); }
+
   #preview { width: 140px; height: 150px; display: block; }
   .classes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; margin-top: 0.4rem; }
   .class-btn {
@@ -113,7 +123,15 @@
     box-shadow: 0 5px 0 rgba(0,0,0,0.2);
     transition: transform 80ms ease, box-shadow 80ms ease;
   }
+  #play:hover, .respawn-btn:hover { transform: translateY(-2px); box-shadow: 0 7px 0 rgba(0,0,0,0.2); }
   #play:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.2); }
+  #play, .respawn-btn { position: relative; overflow: hidden; transition: transform 120ms ease, box-shadow 120ms ease; }
+  #play::after, .respawn-btn::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-120%);
+    background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%);
+    animation: shine 3.2s ease-in-out 1s infinite;
+  }
+  @keyframes shine { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
   .respawn-btn {
     width: 100%; min-width: 16rem; font: inherit; font-size: 1.35rem; font-weight: 600;
     padding: 0.8rem; border: 0; border-radius: 1.25rem; cursor: pointer;
@@ -210,6 +228,25 @@
   }
   .sprint-fill { height: 100%; width: 100%; background: #f5b301; border-radius: 999px; }
   .sprint-fill.tired { background: #9ca3af; }
+  /* ---------- HUD entrance (plays every time you spawn) ---------- */
+  .hud-tip { animation: inLeft 420ms cubic-bezier(.2,.9,.3,1.1) both; }
+  .health { animation: inTop 480ms cubic-bezier(.2,.9,.3,1.2) 60ms both; }
+  .board { animation: inRight 460ms cubic-bezier(.2,.9,.3,1.1) 120ms both; }
+  #minimap { animation: inRight 460ms cubic-bezier(.2,.9,.3,1.1) 180ms both; }
+  .abilities { animation: inUp 480ms cubic-bezier(.2,.9,.3,1.2) 140ms both; }
+  body.mode-touch .abilities { animation-name: inUpCenter; }
+  @keyframes inLeft { from { opacity: 0; transform: translateX(-30px); } }
+  @keyframes inRight { from { opacity: 0; transform: translateX(30px); } }
+  @keyframes inUp { from { opacity: 0; transform: translateY(30px); } }
+  @keyframes inUpCenter { from { opacity: 0; transform: translate(-50%, 30px); } to { transform: translateX(-50%); } }
+  @keyframes inTop { from { opacity: 0; transform: translate(-50%, -30px); } to { transform: translateX(-50%); } }
+  .health-ghost {
+    position: absolute; inset: 0 auto 0 0; width: 100%; background: rgba(255,255,255,0.75);
+    transition: width 520ms ease 260ms;
+  }
+  #kills.pop { display: inline-block; animation: killPop 420ms cubic-bezier(.2,.9,.3,1.6); color: #16a34a; }
+  @keyframes killPop { 0% { transform: scale(1); } 40% { transform: scale(1.6); } 100% { transform: scale(1); } }
+
   /* ---------- Phone + controller ---------- */
   button { touch-action: manipulation; }
   canvas#game { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -256,7 +293,7 @@
 
   /* ---------- Upgrade cards ---------- */
   .upgrades {
-    position: absolute; left: 50%; transform: translateX(-50%);
+    position: absolute; left: 50%; transform: translateX(-50%); perspective: 900px;
     top: calc(3.6rem + env(safe-area-inset-top, 0px));
     display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
     pointer-events: auto; width: min(640px, calc(100vw - 2rem));
@@ -266,19 +303,37 @@
     font-weight: 600; font-size: 1rem; color: var(--ink);
     background: var(--panel); border: 2px solid var(--panel-edge);
     padding: 0.2rem 0.8rem; border-radius: 999px;
+    animation: titlePop 380ms cubic-bezier(.2,.9,.3,1.5) both;
   }
+  @keyframes titlePop { from { opacity: 0; transform: scale(.6); } }
+  .upgrades.mercy .upgrades-title { background: #fbbf24; border-color: #f59e0b; color: #422006; }
+  .upgrades.mercy .upgrade-card { border-color: #f59e0b; }
   .upgrade-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; width: 100%; }
   .upgrade-card {
     font: inherit; color: var(--ink); text-align: left; cursor: pointer;
     background: var(--panel); border: 2px solid var(--panel-edge); border-radius: 1rem;
     padding: 0.6rem 0.75rem 0.65rem; display: flex; flex-direction: column; gap: 0.2rem;
     box-shadow: 0 4px 0 rgba(0,0,0,0.12);
-    animation: deal 260ms ease-out both;
+    position: relative; overflow: hidden; transform-origin: top center;
+    animation: flipIn 560ms cubic-bezier(.2,.9,.3,1.25) both;
+    transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
   }
-  .upgrade-card:nth-child(2) { animation-delay: 60ms; }
-  .upgrade-card:nth-child(3) { animation-delay: 120ms; }
-  @keyframes deal { from { transform: translateY(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
-  .upgrade-card:hover { border-color: #38bdf8; }
+  .upgrade-card:nth-child(2) { animation-delay: 90ms; }
+  .upgrade-card:nth-child(3) { animation-delay: 180ms; }
+  .upgrade-card::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-120%);
+    background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
+    animation: sweep 900ms ease-out 400ms both;
+  }
+  .upgrade-card:nth-child(2)::after { animation-delay: 490ms; }
+  .upgrade-card:nth-child(3)::after { animation-delay: 580ms; }
+  @keyframes flipIn { from { opacity: 0; transform: rotateX(-95deg) translateY(-20px); } to { opacity: 1; transform: none; } }
+  @keyframes sweep { to { transform: translateX(120%); } }
+  .upgrade-card:hover { border-color: #38bdf8; transform: translateY(-4px) scale(1.03); box-shadow: 0 10px 18px rgba(0,0,0,0.15); }
+  .upgrade-card.chosen { animation: chosen 340ms cubic-bezier(.3,.7,.4,1) forwards; border-color: #38bdf8; }
+  .upgrade-card.dismissed { animation: dismissed 240ms ease-in forwards; }
+  @keyframes chosen { 0% { transform: scale(1); } 35% { transform: scale(1.12); opacity: 1; } 100% { transform: translateY(-40px) scale(.9); opacity: 0; } }
+  @keyframes dismissed { to { transform: translateY(16px) scale(.92); opacity: 0; } }
   .upgrade-top { display: flex; align-items: center; gap: 0.45rem; }
   .upgrade-card kbd { background: #38bdf8; color: #06283d; border-color: #38bdf8; }
   .upgrade-name { font-weight: 600; font-size: 1rem; }
@@ -294,12 +349,30 @@
     transform: translateX(-50%); white-space: nowrap;
     background: var(--panel); border: 2px solid var(--panel-edge); color: var(--ink);
     font-weight: 600; padding: 0.4rem 1rem; border-radius: 999px;
-    opacity: 0; transition: opacity 200ms ease;
+    opacity: 0; transform: translate(-50%, 18px) scale(.94);
+    transition: opacity 240ms ease, transform 320ms cubic-bezier(.2,.9,.3,1.4);
   }
-  .toast.show { opacity: 1; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
   #death {
     position: fixed; inset: 0; display: grid; place-items: center; padding: 1.5rem; overflow-y: auto;
-    background: rgba(90, 0, 0, 0.35);
+    background: radial-gradient(circle at 50% 45%, rgba(120, 0, 0, 0.25), rgba(40, 0, 0, 0.6));
+    animation: fadeIn 420ms ease both;
+  }
+  @keyframes fadeIn { from { opacity: 0; } }
+  #death .death-card { animation: deathIn 620ms cubic-bezier(.2,.9,.25,1.25) 120ms both; }
+  @keyframes deathIn { from { opacity: 0; transform: translateY(50px) scale(.8) rotate(-3deg); } }
+  #death h2 { animation: slam 700ms cubic-bezier(.2,.9,.3,1) 220ms both; }
+  @keyframes slam {
+    0% { opacity: 0; transform: scale(2.4); }
+    45% { opacity: 1; transform: scale(.94); }
+    55% { transform: translateX(-6px); } 65% { transform: translateX(6px); }
+    75% { transform: translateX(-3px); } 100% { transform: none; }
+  }
+  .respawn-btn { animation: glow 1.8s ease-in-out 1.2s infinite; }
+  @keyframes glow { 0%, 100% { box-shadow: 0 5px 0 rgba(0,0,0,0.2); } 50% { box-shadow: 0 5px 0 rgba(0,0,0,0.2), 0 0 0 6px rgba(47,158,110,0.28); } }
+  p.mercy:not(.hidden) {
+    display: inline-block; background: #fbbf24; color: #422006 !important; padding: 0.35rem 0.8rem;
+    border-radius: 999px; animation: titlePop 480ms cubic-bezier(.2,.9,.3,1.5) 600ms both;
   }
   #death.hidden { display: none; }
   .death-card { text-align: center; gap: 0.8rem; }
@@ -322,6 +395,7 @@
     #minimap { width: 96px; height: 96px; }
   }
   @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; }
     .dash-ring.ready-pop { animation: none; }
     .health-fill { transition: none; }
     .upgrade-card { animation: none; }
@@ -381,7 +455,7 @@
 <div id="hud" class="hidden">
   <button type="button" class="hud-tip" id="leaveBtn"><span class="desk">Esc to leave</span><span class="tch">Leave</span><span class="padk">Options to leave</span><span id="count"></span><span id="kills">Kills 0</span></button>
   <div class="health" aria-label="Health">
-    <div class="health-track"><div class="health-fill" id="hpFill"></div><div class="health-text" id="hpText">100</div></div>
+    <div class="health-track"><div class="health-ghost" id="hpGhost"></div><div class="health-fill" id="hpFill"></div><div class="health-text" id="hpText">100</div></div>
   </div>
   <div class="upgrades hidden" id="upgrades">
     <div class="upgrades-title" id="upgradesTitle">Pick an upgrade</div>
@@ -465,10 +539,10 @@
 
   // Classes: the real numbers live in server.js, these are just for the menu
   const CLASSES = [
-    { key: "soldier", name: "Soldier", desc: "Balanced. Good at everything, great at nothing." },
+    { key: "soldier", name: "Soldier", desc: "Balanced, and heals a little faster (+0.5 HP/s)." },
     { key: "tank",    name: "Tank",    desc: "+20% health, but 8% slower." },
     { key: "artist",  name: "Artist",  desc: "+20% ink and +30 drawing reach, but -1 damage." },
-    { key: "sniper",  name: "Sniper",  desc: "+3 damage and 30% faster bullets, but shoots slower." },
+    { key: "sniper",  name: "Sniper",  desc: "+2 damage and faster bullets, but shoots slower and -10% health." },
     { key: "scout",   name: "Scout",   desc: "12% faster, more stamina, dash every 8s, but -15% health." },
     { key: "gunner",  name: "Gunner",  desc: "Shoots 25% faster, but -2 damage." },
   ];
@@ -524,7 +598,17 @@
     mouseFire: false, mouseDraw: false,
     aimPoint: null,               // world point you're aiming/drawing at
     touch: { move: null, aim: null, drawMode: false },  // on-screen thumbsticks
+    crates: new Map(),            // id -> {x, y, born}
+    spawnT: new Map(),            // id ("me" for you) -> time they spawned (pop-in animation)
+    floaters: [],                 // floating damage numbers
+    hitmarker: -1e9,              // last time your bullet hit someone
+    shake: 0,                     // screen shake strength
+    moveMag: 0,
   };
+  let offerSeq = 0, offerLocked = false;
+  const easeOutBack = (k) => { const c = 1.9; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
+  function addShake(n) { if (!reducedMotion) state.shake = Math.max(state.shake, n); }
+  function burst(x, y, color, count, power) { for (let i = 0; i < count; i++) spark(x, y, color, power); }
 
   try {
     const saved = JSON.parse(localStorage.getItem("circleio") || "null");
@@ -559,7 +643,32 @@
     if (state.player && Number.isFinite(d.x)) {
       state.player.x = d.x; state.player.y = d.y;
       state.camera.x = d.x; state.camera.y = d.y;
+      // spawn-in: pop, ring and confetti
+      const now = performance.now();
+      state.spawnT.set("me", now);
+      state.rings.push({ x: d.x, y: d.y, t: now, color: state.player.color, big: true });
+      burst(d.x, d.y, state.player.color, 18, 1.4);
+      burst(d.x, d.y, "#ffffff", 8, 1);
     }
+  });
+
+  // upgrade crates
+  socket.on("crates", (list) => {
+    state.crates.clear();
+    for (const c of list) state.crates.set(c.id, { x: c.x, y: c.y, born: -1e9 });
+  });
+  socket.on("crate", (c) => state.crates.set(c.id, { x: c.x, y: c.y, born: performance.now() }));
+  socket.on("crateTaken", ({ id, by, x, y }) => {
+    state.crates.delete(id);
+    burst(x, y, "#fbbf24", 22, 1.6); burst(x, y, "#fff7c2", 10, 1);
+    state.rings.push({ x, y, t: performance.now(), color: "#f59e0b", big: true });
+    if (by === myId) { toast("Upgrade crate!"); rumble(160, 0.5); }
+  });
+  socket.on("shotBlocked", ({ owner, x, y, aim }) => {
+    const who = owner === myId ? "me" : owner;
+    state.recoil.set(who, performance.now());
+    for (let i = 0; i < 6; i++) spark(x, y, i % 2 ? "#d6d3d1" : "#fde68a", 0.8, aim + Math.PI, 1.6);
+    if (who === "me") addShake(2);
   });
 
   socket.on("walls", (list) => {
@@ -583,9 +692,14 @@
   socket.on("bulletsGone", (ids) => { const g = new Set(ids); state.bullets = state.bullets.filter((b) => !g.has(b.id)); });
 
   socket.on("hits", (hits) => {
+    const now = performance.now();
     for (const h of hits) {
       for (let i = 0; i < 10; i++) spark(h.x, h.y, i % 2 ? "#ef4444" : "#fca5a5", 1);
-      if (h.id === myId) { state.hurtFlash = 1; rumble(120, 0.6); }
+      if (h.id === myId) { state.hurtFlash = 1; rumble(120, 0.6); addShake(9); }
+      if (h.by === myId) {
+        state.hitmarker = now;
+        state.floaters.push({ x: h.x + (Math.random() - 0.5) * 20, y: h.y - 18, text: "-" + (h.dmg || ""), t: now });
+      }
     }
   });
 
@@ -601,18 +715,25 @@
     state.others.delete(id);
   });
 
-  socket.on("died", ({ by, kills, mercy }) => showDeath(String(by).slice(0, 16), kills || 0, !!mercy));
+  socket.on("died", ({ by, kills, mercy }) => showDeath(String(by).slice(0, 16), kills || 0, Number(mercy) || 0));
 
   socket.on("stats", (st) => {
+    const before = state.stats.kills;
     state.stats = { ...state.stats, ...st };
     killsEl.textContent = `Kills ${state.stats.kills}`;
+    if (state.stats.kills > before) { killsEl.classList.remove("pop"); void killsEl.offsetWidth; killsEl.classList.add("pop"); }
   });
   socket.on("offer", (o) => showOffer(o));
-  socket.on("picked", ({ name }) => toast(`${name} upgraded!`));
+  socket.on("picked", ({ name }) => {
+    toast(`${name} upgraded!`);
+    const p = state.player;
+    if (p) { burst(p.x, p.y, "#38bdf8", 16, 1.2); state.rings.push({ x: p.x, y: p.y, t: performance.now(), color: "#38bdf8" }); }
+  });
   socket.on("kill", ({ name, heal }) => {
     toast(`You eliminated ${String(name).slice(0, 16)}  +${heal} HP`);
     rumble(250, 1);
     state.hurtFlash = 0;
+    addShake(6);
   });
 
   socket.on("state", (data) => {
@@ -637,7 +758,11 @@
       }
       seen.add(sp.id);
       let o = state.others.get(sp.id);
-      if (!o) { o = { x: sp.x, y: sp.y }; state.others.set(sp.id, o); }
+      if (!o) {
+        o = { x: sp.x, y: sp.y }; state.others.set(sp.id, o);
+        state.spawnT.set(sp.id, now);
+        state.rings.push({ x: sp.x, y: sp.y, t: now, color: HEX.test(sp.color) ? sp.color : "#64748b" });
+      }
       o.tx = sp.x; o.ty = sp.y; o.name = sp.name;
       o.color = HEX.test(sp.color) ? sp.color : "#64748b";
       o.cls = sp.cls;
@@ -787,9 +912,14 @@
   // ================= Upgrades =================
   function showOffer(o) {
     state.offer = o;
+    offerSeq++; offerLocked = false;
     upgradeRow.textContent = "";
-    upgradesTitle.textContent = o.mercy ? "Mercy upgrade: pick one on the house"
+    upgradesEl.classList.toggle("mercy", !!o.mercy);
+    upgradesTitle.textContent = o.mercy
+      ? (o.pending > 1 ? `Mercy upgrades: ${o.pending} on the house` : "Mercy upgrade: one on the house")
       : o.pending > 1 ? `Pick an upgrade (${o.pending} to pick)` : "Pick an upgrade";
+    // restart the pop-in animations
+    upgradesEl.classList.add("hidden"); void upgradesEl.offsetWidth;
     o.cards.forEach((c, i) => {
       const b = document.createElement("button");
       b.type = "button"; b.className = "upgrade-card";
@@ -812,12 +942,16 @@
     upgradesEl.classList.remove("hidden");
   }
   function pickUpgrade(i) {
-    if (!state.offer || !state.offer.cards[i]) return;
+    if (!state.offer || !state.offer.cards[i] || offerLocked) return;
+    offerLocked = true;
     socket.emit("pick", { index: i });
-    hideOffer();
+    [...upgradeRow.children].forEach((c, j) => c.classList.add(j === i ? "chosen" : "dismissed"));
+    const seq = offerSeq;
+    setTimeout(() => { if (seq === offerSeq) hideOffer(); }, 340);
   }
   function hideOffer() {
     state.offer = null;
+    offerLocked = false;
     upgradesEl.classList.add("hidden");
   }
 
@@ -832,6 +966,8 @@
   // ================= Death + respawn =================
   function showDeath(by, kills, mercy) {
     mercyNote.classList.toggle("hidden", !mercy);
+    if (mercy) mercyNote.textContent = `Tough luck! Next life starts with ${mercy} free upgrade${mercy > 1 ? "s" : ""}.`;
+    addShake(12);
     state.screen = "dead";
     if (state.player) state.rings.push({ x: state.player.x, y: state.player.y, t: performance.now(), color: state.player.color, big: true });
     state.player = null;
@@ -1233,6 +1369,15 @@
       : x > o.x - pad && x < o.x + o.w + pad && y > o.y - pad && y < o.y + o.h + pad);
   }
 
+  function segSegDist(ax, ay, bx, by, w) {
+    const cross = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+    const d1 = cross(w.x1, w.y1, w.x2, w.y2, ax, ay), d2 = cross(w.x1, w.y1, w.x2, w.y2, bx, by);
+    const d3 = cross(ax, ay, bx, by, w.x1, w.y1), d4 = cross(ax, ay, bx, by, w.x2, w.y2);
+    if (((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0))) return 0;
+    const seg = { x1: ax, y1: ay, x2: bx, y2: by };
+    return Math.min(segDist(ax, ay, w), segDist(bx, by, w), segDist(w.x1, w.y1, seg), segDist(w.x2, w.y2, seg));
+  }
+
   function segDist(px, py, w) {
     const vx = w.x2 - w.x1, vy = w.y2 - w.y1;
     const len2 = vx * vx + vy * vy;
@@ -1262,6 +1407,7 @@
     // others glide toward their latest known spot
     const k = Math.min(1, dt * 12);
     for (const [id, o] of state.others) {
+      o.moving = Math.hypot(o.tx - o.x, o.ty - o.y) > 3;
       o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k;
       if (o.targetAim !== undefined) {
         if (o.aim === undefined) o.aim = o.targetAim;
@@ -1278,8 +1424,9 @@
     // bullets fly; they vanish on walls right away so it looks right
     state.bullets = state.bullets.filter((b) => {
       if (now - b.born > BULLET_LIFE + 150) return false;
+      const px = b.x, py = b.y;
       b.x += b.vx * dt; b.y += b.vy * dt;
-      for (const w of state.walls) if (segDist(b.x, b.y, w) < WALL_HALF + BULLET_RADIUS) {
+      for (const w of state.walls) if (segSegDist(px, py, b.x, b.y, w) < WALL_HALF + BULLET_RADIUS) {
         for (let i = 0; i < 4; i++) spark(b.x, b.y, b.color, 0.7);
         return false;
       }
@@ -1303,11 +1450,15 @@
 
     state.hurtFlash = Math.max(0, state.hurtFlash - dt * 2.5);
     state.spread = Math.max(0, state.spread - dt * 60);
+    state.shake *= Math.exp(-dt * 9);
+    if (state.shake < 0.2) state.shake = 0;
+    state.floaters = state.floaters.filter((f) => now - f.t < 750);
 
     if (state.screen === "game" && state.player) {
       const p = state.player;
       const ctl = readControls(p);
       const { dx, dy } = ctl, wantSprint = ctl.sprint;
+      state.moveMag = Math.hypot(dx, dy);
       state.aimPoint = ctl.aimPoint;
       if (Math.hypot(ctl.aimPoint.x - p.x, ctl.aimPoint.y - p.y) > 2) state.aim = Math.atan2(ctl.aimPoint.y - p.y, ctl.aimPoint.x - p.x);
       state.firing = ctl.fire;
@@ -1319,8 +1470,7 @@
         // dashing: zoom straight ahead, through walls
         p.x += state.dashDir.x * DASH_SPEED * dt;
         p.y += state.dashDir.y * DASH_SPEED * dt;
-        addTrail("me", p.x, p.y, now);
-        resolveObstacles(p, p.r);
+        addTrail("me", p.x, p.y, now);   // dashing: straight through walls and rocks
       } else {
         let speed = PLAYER_SPEED * state.stats.speedMult;
         if (wantSprint && (dx || dy) && !state.exhausted && state.stamina > 0) {
@@ -1382,6 +1532,7 @@
     const maxHp = state.stats.maxHp;
     const hp = Math.max(0, Math.min(maxHp, state.hp));
     hpFill.style.width = (hp / maxHp) * 100 + "%";
+    $("hpGhost").style.width = (hp / maxHp) * 100 + "%";
     hpText.textContent = `${Math.ceil(hp)} / ${maxHp}`;
 
     sprintFill.style.width = Math.min(100, state.stamina) + "%";
@@ -1463,8 +1614,20 @@
   }
 
   function drawPlayer(p, sx, sy, opts = {}) {
-    if (opts.aim !== undefined) drawGun(p, sx, sy, opts.aim, opts.firedAt, opts.now);
+    const now = opts.now || performance.now();
+    const sk = opts.spawnK === undefined ? 1 : opts.spawnK;
+    const sc = sk >= 1 ? 1 : Math.max(0.01, easeOutBack(sk));
+    const bob = opts.moving && !reducedMotion ? -Math.abs(Math.sin(now / 105)) * 3.2 : 0;
+    // soft shadow on the ground
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + p.r * 0.95, p.r * 0.85 * sc, p.r * 0.26 * sc, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.13)"; ctx.fill();
+    ctx.save();
+    ctx.translate(sx, sy + bob); ctx.scale(sc, sc); ctx.translate(-sx, -sy);
+    if (opts.aim !== undefined) drawGun(p, sx, sy, opts.aim, opts.firedAt, now);
     drawAvatar(ctx, sx, sy, p.r, p.color, p.cls, opts.stretch);
+    ctx.restore();
+    ctx.globalAlpha = Math.min(1, sk * 2);
 
     // name above the head
     ctx.font = `600 14px Fredoka, "Trebuchet MS", sans-serif`;
@@ -1487,6 +1650,34 @@
       ctx.fillStyle = "rgba(255,255,255,0.85)"; roundRect(bx, by, bw, bh, 3.5); ctx.fill();
       if (frac > 0) { ctx.fillStyle = p.color; roundRect(bx, by, bw * frac, bh, 3.5); ctx.fill(); }
     }
+    ctx.globalAlpha = 1;
+  }
+
+  // Upgrade crate: bobbing gold box with a glow, drops in when it spawns
+  function drawCrate(c, sx, sy, now) {
+    const age = now - c.born;
+    const drop = age < 600 ? 1 - easeOutBack(Math.min(1, age / 600)) : 0;   // falls in from above
+    const bob = reducedMotion ? 0 : Math.sin(now / 320 + c.x) * 4;
+    const y = sy + bob - drop * 90;
+    const pulse = reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(now / 260 + c.y);
+    const g = ctx.createRadialGradient(sx, sy, 4, sx, sy, 48);
+    g.addColorStop(0, `rgba(251,191,36,${0.35 + pulse * 0.25})`);
+    g.addColorStop(1, "rgba(251,191,36,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, 48, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sx, sy + 20, 16, 5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.15)"; ctx.fill();
+    ctx.save();
+    ctx.translate(sx, y);
+    ctx.rotate(reducedMotion ? 0 : Math.sin(now / 500 + c.x) * 0.12);
+    roundRect(-17, -17, 34, 34, 7);
+    ctx.fillStyle = "#f59e0b"; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = "#b45309"; ctx.stroke();
+    ctx.fillStyle = "#fde68a";
+    ctx.fillRect(-3.5, -17, 7, 34); ctx.fillRect(-17, -3.5, 34, 7);
+    ctx.fillStyle = "#fff";
+    ctx.font = "700 18px Fredoka, 'Trebuchet MS', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("+", 0, 1);
+    ctx.restore();
   }
 
   function drawTrail(id, color, ox, oy, now) {
@@ -1523,10 +1714,18 @@
     const { w, h, dpr } = view;
     const now = performance.now();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const ox = w / 2 - state.camera.x, oy = h / 2 - state.camera.y;
+    const shx = state.shake ? (Math.random() - 0.5) * state.shake : 0;
+    const shy = state.shake ? (Math.random() - 0.5) * state.shake : 0;
+    const ox = w / 2 - state.camera.x + shx, oy = h / 2 - state.camera.y + shy;
 
     ctx.fillStyle = colors.outside; ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = colors.arena; ctx.fillRect(ox, oy, WORLD_SIZE, WORLD_SIZE);
+    // big faint checker tiles so movement feels faster
+    const T = 300;
+    ctx.fillStyle = "rgba(0,0,0,0.022)";
+    for (let tx = Math.max(0, Math.floor(-ox / T)); tx * T + ox < w && tx * T < WORLD_SIZE; tx++)
+      for (let ty = Math.max(0, Math.floor(-oy / T)); ty * T + oy < h && ty * T < WORLD_SIZE; ty++)
+        if ((tx + ty) % 2 === 0) ctx.fillRect(tx * T + ox, ty * T + oy, T, T);
 
     ctx.strokeStyle = colors.grid; ctx.lineWidth = 1.5; ctx.beginPath();
     const left = Math.max(0, Math.floor(-ox / GRID) * GRID), right = Math.min(WORLD_SIZE, left + w + GRID * 2);
@@ -1535,19 +1734,34 @@
     for (let y = top; y <= bottom; y += GRID) { ctx.moveTo(Math.max(0, ox), y + oy); ctx.lineTo(Math.min(w, ox + WORLD_SIZE), y + oy); }
     ctx.stroke();
 
-    // obstacles (only the ones on screen)
+    // obstacles (only the ones on screen), with a drop shadow and a highlight
     for (const o of state.obstacles) {
       if (o.type === "rock") {
-        if (o.x + o.r + ox < 0 || o.x - o.r + ox > w || o.y + o.r + oy < 0 || o.y - o.r + oy > h) continue;
+        if (o.x + o.r + ox < -20 || o.x - o.r + ox > w || o.y + o.r + oy < -20 || o.y - o.r + oy > h) continue;
+        ctx.beginPath(); ctx.arc(o.x + ox + 7, o.y + oy + 10, o.r, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fill();
         ctx.beginPath(); ctx.arc(o.x + ox, o.y + oy, o.r, 0, Math.PI * 2);
         ctx.fillStyle = colors.rock; ctx.fill();
         ctx.lineWidth = 6; ctx.strokeStyle = colors.rockEdge; ctx.stroke();
+        ctx.beginPath(); ctx.arc(o.x + ox - o.r * 0.28, o.y + oy - o.r * 0.3, o.r * 0.42, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.13)"; ctx.fill();
       } else {
-        if (o.x + o.w + ox < 0 || o.x + ox > w || o.y + o.h + oy < 0 || o.y + oy > h) continue;
+        if (o.x + o.w + ox < -20 || o.x + ox > w || o.y + o.h + oy < -20 || o.y + oy > h) continue;
+        roundRect(o.x + ox + 7, o.y + oy + 10, o.w, o.h, 10);
+        ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fill();
         roundRect(o.x + ox, o.y + oy, o.w, o.h, 10);
         ctx.fillStyle = colors.block; ctx.fill();
         ctx.lineWidth = 6; ctx.strokeStyle = colors.blockEdge; ctx.stroke();
+        roundRect(o.x + ox + 8, o.y + oy + 8, o.w - 16, Math.min(18, o.h / 4), 6);
+        ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fill();
       }
+    }
+
+    // upgrade crates
+    for (const c of state.crates.values()) {
+      const cx = c.x + ox, cy = c.y + oy;
+      if (cx < -60 || cy < -60 || cx > w + 60 || cy > h + 60) continue;
+      drawCrate(c, cx, cy, now);
     }
 
     // walls
@@ -1555,7 +1769,8 @@
     for (const wl of state.walls) {
       const age = now - wl.born, fadeStart = wallLife(wl) - WALL_FADE;
       ctx.globalAlpha = age < fadeStart ? 1 : Math.max(0.15, 1 - (age - fadeStart) / WALL_FADE);
-      ctx.strokeStyle = darken(wl.color, 0.85);
+      ctx.lineWidth = WALL_HALF * 2 * (age < 160 ? 1 + 0.7 * (1 - age / 160) : 1);   // pops in thick
+      ctx.strokeStyle = age < 160 ? "#ffffff" : darken(wl.color, 0.85);
       ctx.beginPath(); ctx.moveTo(wl.x1 + ox, wl.y1 + oy); ctx.lineTo(wl.x2 + ox, wl.y2 + oy); ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -1575,12 +1790,14 @@
 
     for (const [id, o] of state.others) {
       drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, cls: o.cls, ink: o.ink, hp: o.hp, maxHp: o.maxHp }, o.x + ox, o.y + oy,
-        { showHp: true, aim: o.aim || 0, firedAt: state.recoil.get(id), now });
+        { showHp: true, aim: o.aim || 0, firedAt: state.recoil.get(id), now, moving: o.moving,
+          spawnK: state.spawnT.has(id) ? Math.min(1, (now - state.spawnT.get(id)) / 480) : 1 });
     }
     if (state.player) {
       const dashing = now < state.dashUntil;
       drawPlayer(state.player, state.player.x + ox, state.player.y + oy,
-        { stretch: dashing ? Math.atan2(state.dashDir.y, state.dashDir.x) : 0, aim: state.aim, firedAt: state.recoil.get("me"), now });
+        { stretch: dashing ? Math.atan2(state.dashDir.y, state.dashDir.x) : 0, aim: state.aim, firedAt: state.recoil.get("me"), now,
+          moving: state.moveMag > 0.1, spawnK: state.spawnT.has("me") ? Math.min(1, (now - state.spawnT.get("me")) / 480) : 1 });
     }
 
     // bullets
@@ -1597,6 +1814,21 @@
       ctx.fillStyle = "#fffbe6"; ctx.fill();
       ctx.lineWidth = 2; ctx.strokeStyle = b.color; ctx.stroke();
     }
+
+    // floating damage numbers
+    for (const f of state.floaters) {
+      const k = (now - f.t) / 750;
+      const pop = k < 0.15 ? 0.6 + (k / 0.15) * 0.6 : 1.2 - Math.min(0.2, (k - 0.15));
+      ctx.save();
+      ctx.translate(f.x + ox, f.y + oy - k * 42);
+      ctx.scale(pop, pop);
+      ctx.globalAlpha = 1 - Math.max(0, (k - 0.55) / 0.45);
+      ctx.font = "700 20px Fredoka, 'Trebuchet MS', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.strokeText(f.text, 0, 0);
+      ctx.fillStyle = "#fde047"; ctx.fillText(f.text, 0, 0);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
 
     // sparks
     for (const q of state.particles) {
@@ -1666,6 +1898,21 @@
       ctx.beginPath(); ctx.arc(x, y, pass ? 1.8 : 3, 0, Math.PI * 2);
       ctx.fillStyle = ctx.strokeStyle; ctx.fill();
     }
+    // hit marker: a quick X when your bullet lands
+    const hk = (performance.now() - state.hitmarker) / 220;
+    if (hk < 1) {
+      const r1 = 9 + hk * 4, r2 = 17 + hk * 4;
+      ctx.globalAlpha = 1 - hk;
+      for (const pass of [0, 1]) {
+        ctx.lineWidth = pass ? 2.5 : 5; ctx.strokeStyle = pass ? "#ef4444" : "rgba(0,0,0,0.5)";
+        ctx.beginPath();
+        for (const [ax, ay] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+          ctx.moveTo(x + ax * r1 * 0.7, y + ay * r1 * 0.7); ctx.lineTo(x + ax * r2 * 0.7, y + ay * r2 * 0.7);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   // on-screen thumbsticks (phones)
@@ -1702,6 +1949,8 @@
       if (o.type === "rock") { mctx.beginPath(); mctx.arc(pad + o.x * scale, pad + o.y * scale, Math.max(1.5, o.r * scale), 0, Math.PI * 2); mctx.fill(); }
       else mctx.fillRect(pad + o.x * scale, pad + o.y * scale, Math.max(2, o.w * scale), Math.max(2, o.h * scale));
     }
+    mctx.fillStyle = "#f59e0b";
+    for (const c of state.crates.values()) mctx.fillRect(pad + c.x * scale - 2.5, pad + c.y * scale - 2.5, 5, 5);
     for (const o of state.others.values()) {
       mctx.beginPath(); mctx.arc(pad + o.x * scale, pad + o.y * scale, 3, 0, Math.PI * 2);
       mctx.fillStyle = o.color; mctx.fill();
