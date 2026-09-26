@@ -170,9 +170,7 @@
     background: #22c55e; margin-right: 0.35rem; vertical-align: 0.05rem;
   }
   .hud-tip #count { margin-left: 0.6rem; color: var(--ink); font-weight: 500; }
-  @media (prefers-reduced-motion: reduce) {
-    #play, .swatch { transition: none; }
-  }
+  body.rm #play, body.rm .swatch { transition: none; }
 
   /* ---------- Health, sprint, dash ---------- */
   .health {
@@ -394,13 +392,150 @@
     .sprint-track { width: 110px; }
     #minimap { width: 96px; height: 96px; }
   }
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; }
-    .dash-ring.ready-pop { animation: none; }
-    .health-fill { transition: none; }
-    .upgrade-card { animation: none; }
-    .toast { transition: none; }
+  /* "Reduce motion" (follows your device setting unless you change it in Settings) */
+  body.rm *, body.rm *::before, body.rm *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; }
+  body.rm .dash-ring.ready-pop { animation: none; }
+  body.rm .health-fill, body.rm .toast { transition: none; }
+
+  .hidden { display: none !important; }
+
+  /* ---------- Mode picker + team lobby ---------- */
+  .mode-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; width: 100%; background: var(--arena);
+    border: 2px solid var(--panel-edge); border-radius: 1.1rem; padding: 3px; }
+  .mode-btn { font: inherit; font-weight: 600; font-size: 0.95rem; cursor: pointer; border: 0; background: none; color: var(--ink-soft);
+    padding: 0.5rem 0.3rem; border-radius: 0.9rem; transition: background 160ms ease, color 160ms ease, transform 160ms ease; }
+  .mode-btn[aria-checked="true"] { background: var(--ink); color: var(--panel); }
+  .mode-btn[data-mode="team"][aria-checked="true"] { background: linear-gradient(90deg, #ef4444, #3b82f6); color: #fff; }
+  #lobby { position: fixed; inset: 0; display: grid; place-items: center; padding: 1.5rem; overflow-y: auto;
+    background: linear-gradient(90deg, rgba(239,68,68,0.18), rgba(59,130,246,0.18)); animation: fadeIn 320ms ease both; }
+  #lobby.hidden { display: none; }
+  .lobby-card { max-width: 30rem; gap: 0.9rem; }
+  .lobby-card h2 { margin: 0; font-size: 2rem; line-height: 1; }
+  .lobby-card h2 .r { color: #ef4444; } .lobby-card h2 .b { color: #3b82f6; }
+  .lobby-status { margin: 0; text-align: center; color: var(--ink-soft); font-size: 1rem; min-height: 1.3em; }
+  .lobby-status.win { font-size: 1.6rem; font-weight: 700; animation: slam 700ms cubic-bezier(.2,.9,.3,1) both; }
+  .lobby-count { font-size: 4rem; font-weight: 700; line-height: 1; animation: countPop 1s ease-out infinite; }
+  @keyframes countPop { 0% { transform: scale(1.5); opacity: 0.3; } 25% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.7; } }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; width: 100%; }
+  .team-col { border-radius: 1rem; padding: 0.7rem; display: flex; flex-direction: column; gap: 0.5rem; min-height: 9rem;
+    border: 2px solid; background: var(--arena); }
+  .team-col.red { border-color: #ef4444; } .team-col.blue { border-color: #3b82f6; }
+  .team-col h3 { margin: 0; font-size: 1.1rem; }
+  .team-col.red h3 { color: #ef4444; } .team-col.blue h3 { color: #3b82f6; }
+  .team-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; flex: 1; }
+  .team-col li { display: flex; align-items: center; gap: 0.35rem; font-size: 0.95rem; }
+  .team-col li.new { animation: titlePop 360ms cubic-bezier(.2,.9,.3,1.5) both; }
+  .team-col li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .team-col li.you .nm { font-weight: 700; }
+  .team-col li .st { font-size: 0.8rem; font-weight: 700; padding: 0.05rem 0.45rem; border-radius: 999px; background: var(--panel-edge); color: var(--ink-soft); }
+  .team-col li .st.ok { background: #22c55e; color: #fff; }
+  .team-col li .st.in { background: #f59e0b; color: #fff; }
+  .join-team { font: inherit; font-weight: 600; cursor: pointer; border-radius: 0.8rem; padding: 0.4rem; color: #fff; border: 0; }
+  .team-col.red .join-team { background: #ef4444; } .team-col.blue .join-team { background: #3b82f6; }
+  .join-team:disabled { opacity: 0.35; cursor: default; }
+  #readyBtn.is-ready { background: #64748b; }
+  #readyBtn:disabled { opacity: 0.5; cursor: default; animation: none; }
+  .team-score { display: flex; align-items: baseline; justify-content: center; gap: 0.35rem; font-weight: 700; font-size: 1.25rem; margin-bottom: 0.2rem; }
+  .team-score .r { color: #ef4444; } .team-score .b { color: #3b82f6; }
+  .team-score small { font-size: 0.72rem; color: var(--ink-soft); font-weight: 500; margin-left: 0.3rem; }
+  .team-score.hidden { display: none; }
+  .team-badge { position: absolute; left: 50%; transform: translateX(-50%); top: calc(2.9rem + env(safe-area-inset-top, 0px));
+    font-weight: 700; font-size: 0.85rem; color: #fff; padding: 0.1rem 0.7rem; border-radius: 999px; }
+  .team-badge.hidden { display: none; }
+  .team-badge.red { background: #ef4444; } .team-badge.blue { background: #3b82f6; }
+
+  /* ---------- Settings ---------- */
+  .gear {
+    font: inherit; cursor: pointer; pointer-events: auto; color: var(--ink);
+    background: var(--panel); border: 2px solid var(--panel-edge); border-radius: 999px;
+    width: 2.4rem; height: 2.4rem; display: grid; place-items: center; padding: 0;
+    transition: transform 200ms ease;
   }
+  .gear:hover { transform: rotate(45deg); }
+  .gear svg { width: 1.3rem; height: 1.3rem; }
+  .card { position: relative; }
+  .card > .gear { position: absolute; top: 0.9rem; right: 0.9rem; }
+  #hudGear { position: absolute; left: 1rem; top: calc(3.9rem + env(safe-area-inset-top, 0px)); animation: inLeft 420ms cubic-bezier(.2,.9,.3,1.1) 80ms both; }
+  body.mode-touch #hudGear { top: calc(10rem + env(safe-area-inset-top, 0px)); }
+  #settings {
+    position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 1rem;
+    background: rgba(10, 20, 15, 0.4); animation: fadeIn 220ms ease both;
+  }
+  #settings.hidden { display: none; }
+  .settings-card {
+    width: min(38rem, 100%); max-height: min(40rem, calc(100vh - 2rem));
+    display: flex; flex-direction: column; background: var(--panel); color: var(--ink);
+    border: 2px solid var(--panel-edge); border-radius: 1.5rem; overflow: hidden;
+    box-shadow: 0 1.5rem 3rem -1rem rgba(0,0,0,0.35);
+    animation: setIn 380ms cubic-bezier(.2,.9,.3,1.2) both;
+  }
+  @keyframes setIn { from { opacity: 0; transform: translateY(20px) scale(.95); } }
+  .set-head { display: flex; align-items: center; gap: 0.8rem; padding: 1rem 1.2rem 0.6rem; }
+  .set-head h2 { margin: 0; font-size: 1.6rem; line-height: 1; flex: 1; }
+  .set-head .hint2 { font-size: 0.85rem; color: var(--ink-soft); }
+  .set-close {
+    font: inherit; font-size: 1.1rem; cursor: pointer; width: 2.2rem; height: 2.2rem; border-radius: 50%;
+    border: 2px solid var(--panel-edge); background: var(--arena); color: var(--ink);
+  }
+  .tabs { display: flex; gap: 0.35rem; padding: 0 1.2rem 0.7rem; overflow-x: auto; }
+  .tab {
+    font: inherit; font-weight: 600; font-size: 0.92rem; cursor: pointer; white-space: nowrap;
+    border: 2px solid var(--panel-edge); background: var(--arena); color: var(--ink-soft);
+    padding: 0.35rem 0.8rem; border-radius: 999px; transition: background 150ms ease, color 150ms ease;
+  }
+  .tab[aria-selected="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .set-body { overflow-y: auto; padding: 0.2rem 1.2rem 0.8rem; display: flex; flex-direction: column; gap: 0.25rem; }
+  .set-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 0.55rem 0.6rem; border-radius: 0.9rem; animation: rowIn 260ms ease both;
+  }
+  .set-row:nth-child(2) { animation-delay: 30ms; } .set-row:nth-child(3) { animation-delay: 60ms; }
+  .set-row:nth-child(4) { animation-delay: 90ms; } .set-row:nth-child(5) { animation-delay: 120ms; }
+  .set-row:nth-child(6) { animation-delay: 150ms; } .set-row:nth-child(n+7) { animation-delay: 180ms; }
+  @keyframes rowIn { from { opacity: 0; transform: translateX(-10px); } }
+  .set-row.pad-focus { background: var(--arena); outline: 2px solid var(--focus); }
+  .set-label { display: flex; flex-direction: column; gap: 0.1rem; }
+  .set-label b { font-weight: 600; font-size: 0.98rem; }
+  .set-label small { color: var(--ink-soft); font-size: 0.82rem; }
+  .seg { display: inline-flex; background: var(--arena); border: 2px solid var(--panel-edge); border-radius: 999px; padding: 2px; flex-shrink: 0; }
+  .seg button {
+    font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: 0; background: none;
+    color: var(--ink-soft); padding: 0.3rem 0.7rem; border-radius: 999px; transition: background 150ms ease, color 150ms ease;
+  }
+  .seg button[aria-checked="true"] { background: var(--ink); color: var(--panel); }
+  .switch {
+    position: relative; width: 3.1rem; height: 1.75rem; flex-shrink: 0; cursor: pointer;
+    border-radius: 999px; border: 2px solid var(--panel-edge); background: var(--arena); padding: 0;
+    transition: background 180ms ease, border-color 180ms ease;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.75rem - 8px); height: calc(1.75rem - 8px);
+    border-radius: 50%; background: var(--ink-soft); transition: transform 220ms cubic-bezier(.2,.9,.3,1.4), background 180ms ease;
+  }
+  .switch[aria-checked="true"] { background: var(--play); border-color: var(--play); }
+  .switch[aria-checked="true"]::after { transform: translateX(1.35rem); background: #fff; }
+  .chips { display: flex; gap: 0.35rem; flex-shrink: 0; }
+  .chip { width: 1.7rem; height: 1.7rem; border-radius: 50%; cursor: pointer; border: 3px solid transparent; box-shadow: inset 0 0 0 2px rgba(0,0,0,0.2); }
+  .chip[aria-checked="true"] { border-color: var(--ink); transform: scale(1.1); }
+  .set-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    padding: 0.7rem 1.2rem 0.9rem; border-top: 2px solid var(--panel-edge); font-size: 0.82rem; color: var(--ink-soft);
+  }
+  .set-foot .fair { max-width: 24rem; }
+  @media (max-width: 560px) {
+    .set-row { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+    .set-head .hint2 { display: none; }
+  }
+  /* settings that change the HUD */
+  body.hide-board .board { display: none !important; }
+  body.hide-toasts .toast { display: none; }
+  .perf {
+    position: absolute; left: 4rem; top: calc(4.25rem + env(safe-area-inset-top, 0px));
+    font: 600 0.8rem ui-monospace, Menlo, Consolas, monospace; color: var(--ink-soft);
+    background: var(--panel); border: 2px solid var(--panel-edge); padding: 0.2rem 0.55rem; border-radius: 0.6rem;
+  }
+  body.mode-touch .perf { top: calc(10.35rem + env(safe-area-inset-top, 0px)); }
+  .hud-scale { zoom: var(--ui, 1); }
 </style>
 </head>
 <body>
@@ -410,6 +545,7 @@
 
 <div id="menu">
   <form class="card" id="menuForm" novalidate>
+    <button type="button" class="gear" data-open-settings aria-label="Settings (B)" title="Settings (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     <h1>circle<span class="dot">.io</span></h1>
 
     <canvas id="preview" aria-hidden="true"></canvas>
@@ -431,6 +567,10 @@
       <p class="class-desc" data-class-desc></p>
     </fieldset>
 
+    <div class="mode-pick" role="radiogroup" aria-label="Game mode">
+      <button type="button" class="mode-btn" data-mode="ffa" role="radio" aria-checked="true">Free for all</button>
+      <button type="button" class="mode-btn" data-mode="team" role="radio" aria-checked="false">Team battle</button>
+    </div>
     <button type="submit" id="play">Play</button>
     <p class="online" id="online" aria-live="polite"></p>
     <p class="controls desk">
@@ -453,20 +593,24 @@
 </div>
 
 <div id="hud" class="hidden">
-  <button type="button" class="hud-tip" id="leaveBtn"><span class="desk">Esc to leave</span><span class="tch">Leave</span><span class="padk">Options to leave</span><span id="count"></span><span id="kills">Kills 0</span></button>
-  <div class="health" aria-label="Health">
+  <button type="button" class="gear" id="hudGear" data-open-settings aria-label="Settings (B)" title="Settings (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  <div class="perf hidden" id="perf">-- fps</div>
+  <div class="team-badge hidden" id="teamBadge"></div>
+  <button type="button" class="hud-tip hud-scale" id="leaveBtn"><span class="desk">Esc to leave</span><span class="tch">Leave</span><span class="padk">Options to leave</span><span id="count"></span><span id="kills">Kills 0</span></button>
+  <div class="health hud-scale" aria-label="Health">
     <div class="health-track"><div class="health-ghost" id="hpGhost"></div><div class="health-fill" id="hpFill"></div><div class="health-text" id="hpText">100</div></div>
   </div>
-  <div class="upgrades hidden" id="upgrades">
+  <div class="upgrades hud-scale hidden" id="upgrades">
     <div class="upgrades-title" id="upgradesTitle">Pick an upgrade</div>
     <div class="upgrade-row" id="upgradeRow"></div>
   </div>
-  <div class="toast" id="toast" role="status"></div>
-  <div class="board" aria-label="Leaderboard">
+  <div class="toast hud-scale" id="toast" role="status"></div>
+  <div class="board hud-scale" aria-label="Leaderboard">
+    <div class="team-score hidden" id="teamScore"><span class="r" id="scoreR">0</span>:<span class="b" id="scoreB">0</span><small id="scoreT">first to 20</small></div>
     <h3>Leaderboard</h3>
     <ol id="boardList"></ol>
   </div>
-  <div class="abilities">
+  <div class="abilities hud-scale">
     <div class="dash">
       <kbd class="desk">R</kbd><kbd class="padk">R1</kbd>
       <div class="dash-ring" id="dashRing" aria-label="Dash">
@@ -486,8 +630,30 @@
   <canvas id="minimap"></canvas>
 </div>
 
+<div id="lobby" class="hidden">
+  <div class="card lobby-card">
+    <button type="button" class="gear" data-open-settings aria-label="Settings (B)" title="Settings (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/></svg></button>
+    <h2><span class="r">Team</span> <span class="b">battle</span></h2>
+    <p class="lobby-status" id="lobbyStatus" aria-live="polite"></p>
+    <div class="lobby-count hidden" id="lobbyCount" aria-live="assertive">3</div>
+    <div class="teams">
+      <div class="team-col red"><h3>Red</h3><ul id="redList"></ul><button type="button" class="join-team" data-team="red">Join Red</button></div>
+      <div class="team-col blue"><h3>Blue</h3><ul id="blueList"></ul><button type="button" class="join-team" data-team="blue">Join Blue</button></div>
+    </div>
+    <fieldset>
+      <legend class="legend">Your class</legend>
+      <div class="classes" data-classes></div>
+      <p class="class-desc" data-class-desc></p>
+    </fieldset>
+    <button type="button" class="respawn-btn" id="readyBtn">Ready!</button>
+    <button type="button" class="link-btn" id="lobbyBack">Back to menu</button>
+    <p class="controls padk"><kbd>L1</kbd>/<kbd>R1</kbd> pick team, <kbd>✕</kbd> ready, <kbd>○</kbd> back</p>
+  </div>
+</div>
+
 <div id="death" class="hidden">
   <div class="card death-card">
+    <button type="button" class="gear" data-open-settings aria-label="Settings (B)" title="Settings (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     <h2>Eliminated</h2>
     <p>by <strong id="killerName">someone</strong></p>
     <p>Kills this life: <strong id="deathKills">0</strong></p>
@@ -503,11 +669,29 @@
   </div>
 </div>
 
+<div id="settings" class="hidden" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="settings-card">
+    <div class="set-head">
+      <h2 id="setTitle">Settings</h2>
+      <span class="hint2"><span class="desk"><kbd>B</kbd> to close</span><span class="padk"><kbd>Create</kbd> or <kbd>○</kbd> to close</span></span>
+      <button type="button" class="set-close" id="setClose" aria-label="Close settings">✕</button>
+    </div>
+    <div class="tabs" role="tablist" id="setTabs"></div>
+    <div class="set-body" id="setBody"></div>
+    <div class="set-foot">
+      <span class="fair">Settings only change how the game looks and feels. None of them let you see more.</span>
+      <button type="button" class="link-btn" id="setReset">Reset to defaults</button>
+    </div>
+  </div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 (() => {
   // ================= Settings (keep in sync with server.js) =================
-  let WORLD_SIZE = 4500;       // the server confirms this when you connect
+  let WORLD_SIZE = 6750;       // the server confirms this when you connect
+  const AREA_CELL = 1125;      // far-away enemies only show as a rough area this big on the minimap
+  const TEAM_COLORS = { red: "#ef4444", blue: "#3b82f6" };
   const GRID = 50;
   const PLAYER_RADIUS = 30;
   const PLAYER_SPEED = 320;
@@ -567,6 +751,167 @@
   const deathEl = $("death"), killerName = $("killerName"), deathKills = $("deathKills");
   const respawnBtn = $("respawn"), toMenuBtn = $("toMenu");
 
+  let reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ================= Settings =================
+  // Everything here is cosmetic or comfort. On purpose there's NO zoom, no bigger
+  // minimap, and no way to turn off the low-health vignette, so nobody gets an edge.
+  const SETTINGS = [
+    { tab: "Visuals", key: "theme", label: "Theme", type: "seg", def: "auto", opts: [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]] },
+    { tab: "Visuals", key: "shake", label: "Screen shake", type: "seg", def: "full", opts: [["full", "Full"], ["low", "Low"], ["off", "Off"]] },
+    { tab: "Visuals", key: "particles", label: "Particles", hint: "Sparks, confetti and smoke", type: "seg", def: "high", opts: [["high", "High"], ["low", "Low"], ["off", "Off"]] },
+    { tab: "Visuals", key: "floor", label: "Floor pattern", type: "seg", def: "both", opts: [["both", "Grid + tiles"], ["grid", "Grid"], ["plain", "Plain"]] },
+    { tab: "Visuals", key: "bob", label: "Walking bounce", type: "switch", def: true },
+    { tab: "Visuals", key: "vignette", label: "Low health effect", hint: "Can't be turned off, only softened", type: "seg", def: "full", opts: [["full", "Full"], ["soft", "Soft"]] },
+    { tab: "Visuals", key: "menuDrift", label: "Moving menu background", type: "switch", def: true },
+
+    { tab: "Crosshair", key: "chStyle", label: "Style", type: "seg", def: "cross", opts: [["cross", "Cross"], ["dot", "Dot"], ["circle", "Circle"]] },
+    { tab: "Crosshair", key: "chColor", label: "Color", type: "chips", def: "#ffffff", opts: [["#ffffff"], ["#fde047"], ["#4ade80"], ["#22d3ee"], ["#f472b6"], ["#fb923c"]] },
+    { tab: "Crosshair", key: "chSize", label: "Size", type: "seg", def: "m", opts: [["s", "Small"], ["m", "Medium"], ["l", "Large"]] },
+    { tab: "Crosshair", key: "chSpread", label: "Spread when firing", hint: "Just an animation, doesn't change your aim", type: "switch", def: true },
+    { tab: "Crosshair", key: "hitmarker", label: "Hit marker", type: "switch", def: true },
+    { tab: "Crosshair", key: "dmgNumbers", label: "Damage numbers", type: "switch", def: true },
+
+    { tab: "HUD", key: "uiScale", label: "HUD size", hint: "The minimap always stays the same size", type: "seg", def: "1", opts: [["0.9", "90%"], ["1", "100%"], ["1.15", "115%"], ["1.3", "130%"]] },
+    { tab: "HUD", key: "hpText", label: "Health numbers", type: "seg", def: "num", opts: [["num", "100 / 100"], ["pct", "Percent"], ["none", "Hidden"]] },
+    { tab: "HUD", key: "names", label: "Other players' names", hint: "Hide them for streaming or videos", type: "seg", def: "show", opts: [["show", "Show"], ["hide", "Hide"]] },
+    { tab: "HUD", key: "board", label: "Leaderboard", type: "switch", def: true },
+    { tab: "HUD", key: "toasts", label: "Pop-up messages", type: "switch", def: true },
+    { tab: "HUD", key: "perf", label: "FPS and ping", type: "switch", def: false },
+
+    { tab: "Controls", key: "sprintMode", label: "Sprint", hint: "Keyboard and controller", type: "seg", def: "hold", opts: [["hold", "Hold"], ["toggle", "Toggle"]] },
+    { tab: "Controls", key: "rumble", label: "Controller vibration", type: "switch", def: true },
+    { tab: "Controls", key: "deadzone", label: "Controller stick deadzone", type: "seg", def: "normal", opts: [["small", "Small"], ["normal", "Normal"], ["large", "Large"]] },
+    { tab: "Controls", key: "stickSize", label: "Touch joystick size", type: "seg", def: "m", opts: [["s", "Small"], ["m", "Medium"], ["l", "Large"]] },
+    { tab: "Controls", key: "stickAlpha", label: "Touch joystick visibility", type: "seg", def: "normal", opts: [["faint", "Faint"], ["normal", "Normal"], ["bold", "Bold"]] },
+    { tab: "Controls", key: "lefty", label: "Left-handed touch", hint: "Swap the move and aim sides", type: "switch", def: false },
+
+    { tab: "Accessibility", key: "motion", label: "Reduce motion", hint: "Calms menus, cards and bouncing", type: "seg", def: "system", opts: [["system", "Device"], ["on", "On"], ["off", "Off"]] },
+    { tab: "Accessibility", key: "enemyHp", label: "Enemy health bar color", type: "chips", def: "#dc2626", opts: [["#dc2626"], ["#f97316"], ["#a855f7"], ["#2563eb"]] },
+    { tab: "Accessibility", key: "flash", label: "Damage flash", hint: "Can't be turned off, only softened", type: "seg", def: "full", opts: [["full", "Full"], ["soft", "Soft"]] },
+  ];
+  const TABS = [...new Set(SETTINGS.map((x) => x.tab))];
+  const settings = {};
+  for (const x of SETTINGS) settings[x.key] = x.def;
+  try { Object.assign(settings, JSON.parse(localStorage.getItem("scorio-settings") || "{}")); } catch (e) {}
+  const setEl = $("settings"), setBody = $("setBody"), setTabs = $("setTabs");
+  let setTab = TABS[0], setFocus = 0, setReturnFocus = null;
+
+  function saveSettings() { try { localStorage.setItem("scorio-settings", JSON.stringify(settings)); } catch (e) {} }
+  function applySettings() {
+    const root = document.documentElement;
+    if (settings.theme === "auto") delete root.dataset.theme; else root.dataset.theme = settings.theme;
+    root.style.setProperty("--ui", settings.uiScale);
+    document.body.classList.toggle("hide-board", !settings.board);
+    document.body.classList.toggle("hide-toasts", !settings.toasts);
+    $("perf").classList.toggle("hidden", !settings.perf);
+    const sys = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    reducedMotion = settings.motion === "on" || (settings.motion === "system" && sys);
+    document.body.classList.toggle("rm", reducedMotion);
+    if (typeof readTheme === "function") { readTheme(); drawPreviews(); }
+  }
+  function setSetting(key, val) {
+    settings[key] = val;
+    saveSettings();
+    applySettings();
+    renderSettings(false);
+  }
+  function renderTabs() {
+    setTabs.textContent = "";
+    for (const t of TABS) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "tab"; b.textContent = t;
+      b.setAttribute("role", "tab"); b.setAttribute("aria-selected", String(t === setTab));
+      b.addEventListener("click", () => { setTab = t; setFocus = 0; renderTabs(); renderSettings(true); });
+      setTabs.appendChild(b);
+    }
+  }
+  function renderSettings(animate) {
+    const scroll = setBody.scrollTop;
+    setBody.textContent = "";
+    SETTINGS.filter((x) => x.tab === setTab).forEach((x, i) => {
+      const row = document.createElement("div");
+      row.className = "set-row" + (state.inputMode === "pad" && i === setFocus ? " pad-focus" : "");
+      if (!animate) row.style.animation = "none";
+      const lab = document.createElement("div"); lab.className = "set-label";
+      const b = document.createElement("b"); b.textContent = x.label; lab.appendChild(b);
+      if (x.hint) { const sm = document.createElement("small"); sm.textContent = x.hint; lab.appendChild(sm); }
+      row.appendChild(lab);
+      if (x.type === "switch") {
+        const sw = document.createElement("button");
+        sw.type = "button"; sw.className = "switch"; sw.setAttribute("role", "switch");
+        sw.setAttribute("aria-checked", String(!!settings[x.key])); sw.setAttribute("aria-label", x.label);
+        sw.addEventListener("click", () => setSetting(x.key, !settings[x.key]));
+        row.appendChild(sw);
+      } else {
+        const box = document.createElement("div");
+        box.className = x.type === "chips" ? "chips" : "seg";
+        box.setAttribute("role", "radiogroup"); box.setAttribute("aria-label", x.label);
+        for (const [val, text] of x.opts) {
+          const o = document.createElement("button");
+          o.type = "button"; o.setAttribute("role", "radio");
+          o.setAttribute("aria-checked", String(String(settings[x.key]) === val));
+          if (x.type === "chips") { o.className = "chip"; o.style.background = val; o.setAttribute("aria-label", val); }
+          else o.textContent = text;
+          o.addEventListener("click", () => setSetting(x.key, val));
+          box.appendChild(o);
+        }
+        row.appendChild(box);
+      }
+      setBody.appendChild(row);
+    });
+    setBody.scrollTop = scroll;
+    const focused = setBody.querySelector(".pad-focus");
+    if (focused) focused.scrollIntoView({ block: "nearest" });
+  }
+  function settingsOpen() { return !setEl.classList.contains("hidden"); }
+  function openSettings() {
+    setReturnFocus = document.activeElement;
+    setEl.classList.remove("hidden");
+    setFocus = 0; renderTabs(); renderSettings(true);
+    const first = setTabs.querySelector('[aria-selected="true"]');
+    if (first && state.inputMode !== "touch") first.focus();
+  }
+  function closeSettings() {
+    setEl.classList.add("hidden");
+    if (setReturnFocus && setReturnFocus.focus && state.screen !== "game") setReturnFocus.focus();
+  }
+  function toggleSettings() { settingsOpen() ? closeSettings() : openSettings(); }
+  // controller: D-pad up/down picks a row, left/right changes it, L1/R1 switch tabs
+  function padSettings(pressed) {
+    const rows = SETTINGS.filter((x) => x.tab === setTab);
+    const ti = TABS.indexOf(setTab);
+    if (pressed(4)) { setTab = TABS[(ti - 1 + TABS.length) % TABS.length]; setFocus = 0; renderTabs(); renderSettings(true); return; }
+    if (pressed(5)) { setTab = TABS[(ti + 1) % TABS.length]; setFocus = 0; renderTabs(); renderSettings(true); return; }
+    if (pressed(12)) { setFocus = (setFocus - 1 + rows.length) % rows.length; renderSettings(false); }
+    if (pressed(13)) { setFocus = (setFocus + 1) % rows.length; renderSettings(false); }
+    const x = rows[setFocus];
+    const step = pressed(15) || pressed(0) ? 1 : pressed(14) ? -1 : 0;
+    if (x && step) {
+      if (x.type === "switch") setSetting(x.key, !settings[x.key]);
+      else {
+        const vals = x.opts.map((o) => o[0]);
+        const k = vals.indexOf(String(settings[x.key]));
+        setSetting(x.key, vals[(k + step + vals.length) % vals.length]);
+      }
+    }
+    if (pressed(1)) closeSettings();
+  }
+  document.querySelectorAll("[data-open-settings]").forEach((b) => b.addEventListener("click", openSettings));
+  $("setClose").addEventListener("click", closeSettings);
+  setEl.addEventListener("click", (e) => { if (e.target === setEl) closeSettings(); });
+  $("setReset").addEventListener("click", () => {
+    for (const x of SETTINGS) settings[x.key] = x.def;
+    saveSettings(); applySettings(); renderSettings(false);
+    toast("Settings reset");
+  });
+  // B opens/closes settings anywhere (unless you're typing your name)
+  window.addEventListener("keydown", (e) => {
+    const typing = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA");
+    if (e.code === "KeyB" && !typing && !e.repeat) { e.preventDefault(); toggleSettings(); }
+    else if (e.code === "Escape" && settingsOpen()) { e.stopImmediatePropagation(); closeSettings(); }
+  }, true);
+
   // ================= State =================
   const state = {
     screen: "menu",
@@ -604,10 +949,19 @@
     hitmarker: -1e9,              // last time your bullet hit someone
     shake: 0,                     // screen shake strength
     moveMag: 0,
+    mode: "ffa",                  // which game you're in: "ffa" | "team"
+    menuMode: "ffa",              // what's picked on the menu
+    team: null,                   // "red" | "blue" in team battles
+    far: new Map(),               // enemies too far to see: only a rough area
+    scores: null, target: 20,
+    lobby: null,                  // last team lobby info from the server
   };
   let offerSeq = 0, offerLocked = false;
   const easeOutBack = (k) => { const c = 1.9; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
-  function addShake(n) { if (!reducedMotion) state.shake = Math.max(state.shake, n); }
+  function addShake(n) {
+    const k = settings.shake === "off" ? 0 : settings.shake === "low" ? 0.4 : 1;
+    if (!reducedMotion && k) state.shake = Math.max(state.shake, n * k);
+  }
   function burst(x, y, color, count, power) { for (let i = 0; i < count; i++) spark(x, y, color, power); }
 
   try {
@@ -627,19 +981,30 @@
   socket.on("connect", () => {
     hint.textContent = "";
     if (state.screen === "game" && state.player) {
-      socket.emit("join", { name: state.player.name, color: state.player.color, cls: state.player.cls });
-    }
+      if (state.mode === "team") backToMenu("Lost connection to the team battle.");
+      else socket.emit("join", { name: state.player.name, color: state.player.color, cls: state.player.cls, mode: "ffa" });
+    } else if (state.screen === "lobby") enterLobby();
     updateCounts();
   });
+  let counts = { ffa: 0, team: 0, teamPhase: "lobby" };
+  socket.on("counts", (c) => { counts = c; updateCounts(); });
   socket.on("disconnect", () => { myId = null; lastInput = ""; updateCounts(); });
 
   socket.on("world", (d) => {
     if (Number.isFinite(d.size)) WORLD_SIZE = d.size;
     state.obstacles = Array.isArray(d.obstacles) ? d.obstacles : [];
+    state.crates.clear(); state.walls = []; state.bullets = [];
+    state.others.clear(); state.far.clear();
   });
 
   socket.on("welcome", (d) => {
     myId = d.id; lastInput = "";
+    state.mode = d.mode || "ffa";
+    state.team = d.team || null;
+    if (state.player && d.color) state.player.color = d.color;
+    const badge = $("teamBadge");
+    badge.classList.toggle("hidden", !state.team);
+    if (state.team) { badge.className = "team-badge " + state.team; badge.textContent = state.team === "red" ? "Red team" : "Blue team"; }
     if (state.player && Number.isFinite(d.x)) {
       state.player.x = d.x; state.player.y = d.y;
       state.camera.x = d.x; state.camera.y = d.y;
@@ -698,7 +1063,7 @@
       if (h.id === myId) { state.hurtFlash = 1; rumble(120, 0.6); addShake(9); }
       if (h.by === myId) {
         state.hitmarker = now;
-        state.floaters.push({ x: h.x + (Math.random() - 0.5) * 20, y: h.y - 18, text: "-" + (h.dmg || ""), t: now });
+        if (settings.dmgNumbers) state.floaters.push({ x: h.x + (Math.random() - 0.5) * 20, y: h.y - 18, text: "-" + (h.dmg || ""), t: now });
       }
     }
   });
@@ -756,13 +1121,23 @@
         if (now - state.lastLocalDash > 600) state.dashReadyAt = now + sp.dashCd;
         continue;
       }
+      if (sp.far) {
+        // too far away to see: we only know roughly which area they're in
+        state.others.delete(sp.id);
+        state.far.set(sp.id, { ax: sp.ax, ay: sp.ay, color: HEX.test(sp.color) ? sp.color : "#64748b", team: sp.team });
+        continue;
+      }
+      state.far.delete(sp.id);
       seen.add(sp.id);
       let o = state.others.get(sp.id);
       if (!o) {
         o = { x: sp.x, y: sp.y }; state.others.set(sp.id, o);
-        state.spawnT.set(sp.id, now);
-        state.rings.push({ x: sp.x, y: sp.y, t: now, color: HEX.test(sp.color) ? sp.color : "#64748b" });
+        if (sp.fresh) {       // only a real spawn gets the pop-in, not someone walking into view
+          state.spawnT.set(sp.id, now);
+          state.rings.push({ x: sp.x, y: sp.y, t: now, color: HEX.test(sp.color) ? sp.color : "#64748b" });
+        }
       }
+      o.team = sp.team;
       o.tx = sp.x; o.ty = sp.y; o.name = sp.name;
       o.color = HEX.test(sp.color) ? sp.color : "#64748b";
       o.cls = sp.cls;
@@ -770,6 +1145,10 @@
       if (Number.isFinite(sp.aim)) o.targetAim = sp.aim;
     }
     for (const id of state.others.keys()) if (!seen.has(id)) state.others.delete(id);
+    const ids = new Set(data.players.map((q) => q.id));
+    for (const id of state.far.keys()) if (!ids.has(id)) state.far.delete(id);
+    state.scores = data.scores || null;
+    state.target = data.target || 20;
     state.board = data.players
       .map((q) => ({ id: q.id, name: q.name, color: HEX.test(q.color) ? q.color : "#64748b", kills: q.kills || 0 }))
       .sort((a, b) => b.kills - a.kills || a.name.localeCompare(b.name));
@@ -777,15 +1156,105 @@
   });
 
   function updateCounts() {
-    const n = state.others.size;
+    const n = state.others.size + state.far.size;
     onlineEl.textContent = "";
     if (!socket.connected) onlineEl.textContent = "Connecting to the server...";
-    else if (n > 0) {
+    else {
       const pip = document.createElement("span"); pip.className = "pip";
-      onlineEl.append(pip, `${n} ${n === 1 ? "player" : "players"} in the arena`);
-    } else onlineEl.textContent = "Arena is empty. Be the first in!";
+      const t = counts.teamPhase === "playing" ? `${counts.team} in a team battle` : `${counts.team} in the team lobby`;
+      onlineEl.append(pip, `${counts.ffa} in free for all, ${t}`);
+    }
     countEl.textContent = socket.connected ? `${n + (state.screen === "game" ? 1 : 0)} playing` : "reconnecting...";
   }
+
+  // ================= Team lobby =================
+  const lobbyEl = $("lobby"), readyBtn = $("readyBtn");
+  let lobbySeen = new Set();
+  socket.on("lobby", (snap) => { state.lobby = snap; if (state.screen === "lobby") renderLobby(); });
+  socket.on("matchStart", () => { lobbyEl.classList.add("hidden"); startGame("team", false); });
+  socket.on("matchOver", ({ winner, scores }) => {
+    const mine = state.team === winner;
+    showLobby();
+    toast(mine ? "Your team won!" : `${winner === "red" ? "Red" : "Blue"} team won`);
+    if (mine) { const p = state.camera; burst(p.x, p.y, TEAM_COLORS[winner], 40, 2); }
+  });
+  function enterLobby() {
+    socket.emit("lobbyJoin", { name: state.name, color: state.color, cls: state.cls });
+    showLobby();
+  }
+  function showLobby() {
+    state.screen = "lobby";
+    state.player = null;
+    Object.assign(state, { drawing: false, firing: false, lastDrawPt: null });
+    hideOffer();
+    canvas.classList.remove("drawable");
+    menu.classList.add("hidden"); hud.classList.add("hidden"); deathEl.classList.add("hidden");
+    lobbyEl.classList.remove("hidden");
+    lobbySeen = new Set();
+    renderLobby();
+  }
+  function renderLobby() {
+    const L = state.lobby;
+    const status = $("lobbyStatus"), count = $("lobbyCount");
+    status.className = "lobby-status";
+    count.classList.add("hidden");
+    readyBtn.disabled = false;
+    if (!L) { status.textContent = "Joining the lobby..."; return; }
+    const me = [...L.red, ...L.blue].find((m) => m.you);
+    const fill = (el, list) => {
+      el.textContent = "";
+      for (const m of list) {
+        const li = document.createElement("li");
+        const key = m.name + (m.you ? "*" : "");
+        li.className = (m.you ? "you " : "") + (lobbySeen.has(key) ? "" : "new");
+        lobbySeen.add(key);
+        const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = m.you ? `${m.name} (you)` : m.name;
+        const st = document.createElement("span");
+        st.className = "st" + (m.playing ? " in" : m.ready ? " ok" : "");
+        st.textContent = m.playing ? "in match" : m.ready ? "ready" : "not ready";
+        li.append(nm, st);
+        el.appendChild(li);
+      }
+      if (!list.length) { const li = document.createElement("li"); li.textContent = "Nobody yet"; li.style.color = "var(--ink-soft)"; el.appendChild(li); }
+    };
+    fill($("redList"), L.red); fill($("blueList"), L.blue);
+    const myTeam = L.red.some((m) => m.you) ? "red" : "blue";
+    document.querySelectorAll(".join-team").forEach((b) => (b.disabled = b.dataset.team === myTeam || L.phase === "playing" && me && me.playing));
+    const all = [...L.red, ...L.blue];
+    if (L.phase === "over" && L.winner) {
+      status.className = "lobby-status win";
+      status.style.color = TEAM_COLORS[L.winner];
+      status.textContent = `${L.winner === "red" ? "Red" : "Blue"} team wins! ${L.scores.red} to ${L.scores.blue}`;
+      readyBtn.textContent = "Next match soon..."; readyBtn.disabled = true;
+      return;
+    }
+    status.style.color = "";
+    if (L.phase === "playing") {
+      status.textContent = `Match in progress: Red ${L.scores.red} to ${L.scores.blue} Blue. First to ${L.target}.`;
+      readyBtn.textContent = "Join match"; readyBtn.classList.remove("is-ready");
+      return;
+    }
+    if (L.phase === "countdown") {
+      count.classList.remove("hidden"); count.textContent = L.countdown;
+      status.textContent = "Starting!";
+    } else if (!L.red.length || !L.blue.length) status.textContent = "Need at least one player on each team.";
+    else status.textContent = `Waiting for everyone to ready up (${all.filter((m) => m.ready).length}/${all.length} ready).`;
+    readyBtn.textContent = me && me.ready ? "Not ready" : "Ready!";
+    readyBtn.classList.toggle("is-ready", !!(me && me.ready));
+  }
+  document.querySelectorAll(".join-team").forEach((b) => b.addEventListener("click", () => socket.emit("lobbyTeam", b.dataset.team)));
+  readyBtn.addEventListener("click", () => {
+    const L = state.lobby; if (!L) return;
+    if (L.phase === "playing") { lobbyEl.classList.add("hidden"); startGame("team", true); return; }
+    const me = [...L.red, ...L.blue].find((m) => m.you);
+    socket.emit("lobbyReady", !(me && me.ready));
+  });
+  $("lobbyBack").addEventListener("click", () => backToMenu());
+  document.querySelectorAll(".mode-btn").forEach((b) => b.addEventListener("click", () => {
+    state.menuMode = b.dataset.mode;
+    document.querySelectorAll(".mode-btn").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+    $("play").textContent = state.menuMode === "team" ? "Go to team lobby" : "Play";
+  }));
 
   // ================= Character drawing =================
   // A simple "no profile picture" style silhouette: a head on shoulders,
@@ -888,6 +1357,7 @@
     }
     drawPreviews();
     try { localStorage.setItem("circleio", JSON.stringify({ name: state.name, color: state.color, cls: state.cls })); } catch (e) {}
+    if (state.mode === "team" && (state.screen === "lobby" || state.screen === "dead")) socket.emit("lobbyClass", { cls: key });
   }
   function drawPreviews() {
     // class buttons
@@ -957,6 +1427,7 @@
 
   let toastTimer = 0;
   function toast(text) {
+    if (!settings.toasts) return;
     toastEl.textContent = text;
     toastEl.classList.add("show");
     clearTimeout(toastTimer);
@@ -985,7 +1456,8 @@
   respawnBtn.addEventListener("click", () => {
     if (!socket.connected) return;
     deathEl.classList.add("hidden");
-    startGame();
+    if (state.mode === "team" && state.lobby && state.lobby.phase !== "playing") { showLobby(); return; }
+    startGame(state.mode, true);
   });
   toMenuBtn.addEventListener("click", () => backToMenu());
 
@@ -1021,12 +1493,15 @@
     updateName();
     if (!state.name) { hint.textContent = "Type a name to play."; nameInput.focus(); return; }
     if (!socket.connected) { hint.textContent = "Still connecting to the server. Try again in a few seconds."; return; }
-    startGame();
+    try { localStorage.setItem("circleio", JSON.stringify({ name: state.name, color: state.color, cls: state.cls })); } catch (e) {}
+    if (state.menuMode === "team") { state.mode = "team"; enterLobby(); }
+    else startGame("ffa", true);
   });
 
   // ================= Game flow =================
-  function startGame() {
-    try { localStorage.setItem("circleio", JSON.stringify({ name: state.name, color: state.color, cls: state.cls })); } catch (e) {}
+  // mode: "ffa" | "team". emit=false when the server already put us in (team match start)
+  function startGame(mode = state.mode, emit = true) {
+    state.mode = mode;
     state.player = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, r: PLAYER_RADIUS, name: state.name, color: state.color, cls: state.cls, ink: 100, hp: HP_MAX };
     Object.assign(state, {
       screen: "game", myInk: INK_MAX, hp: HP_MAX, stamina: STAMINA_MAX, exhausted: false,
@@ -1041,9 +1516,10 @@
     state.keys.clear();
     lastInput = "";
     hint.textContent = "";
-    socket.emit("join", { name: state.name, color: state.color, cls: state.cls });
+    if (emit) socket.emit("join", { name: state.name, color: state.color, cls: state.cls, mode });
     canvas.classList.add("drawable");
     menu.classList.add("hidden");
+    lobbyEl.classList.add("hidden");
     hud.classList.remove("hidden");
     resize();   // minimap size depends on the HUD being visible
     updateCounts();
@@ -1051,6 +1527,9 @@
 
   function backToMenu(message) {
     state.screen = "menu";
+    state.mode = "ffa"; state.team = null; state.scores = null;
+    lobbyEl.classList.add("hidden");
+    $("teamBadge").classList.add("hidden");
     state.player = null;
     Object.assign(state, { pointer: null, drawing: false, lastDrawPt: null, firing: false, hurtFlash: 0 });
     state.keys.clear();
@@ -1069,12 +1548,14 @@
   // ================= Input =================
   const MOVE_KEYS = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
   window.addEventListener("keydown", (e) => {
+    if (state.screen === "lobby" && e.code === "Escape" && !settingsOpen()) { backToMenu(); return; }
     if (state.screen !== "game") return;
     if (e.code === "Escape") { backToMenu(); return; }
     if (MOVE_KEYS.includes(e.code) || e.code === "ShiftLeft" || e.code === "ShiftRight") {
       state.keys.add(e.code); e.preventDefault();
     }
     if (e.code === "KeyR" && !e.repeat) tryDash();
+    if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !e.repeat && settings.sprintMode === "toggle") state.sprintToggled = !state.sprintToggled;
     const pick = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
     if (pick !== undefined && !e.repeat) pickUpgrade(pick);
   });
@@ -1098,14 +1579,16 @@
     state.mouseDraw = (e.buttons & 2) !== 0;
   }
   // ---------- Touch: left thumb = move stick, right thumb = aim/shoot stick (or pen) ----------
-  const STICK_R = 60;
+  let STICK_R = 60;
+  const stickR = () => ({ s: 46, m: 60, l: 78 }[settings.stickSize] || 60);
   canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "touch") {
       setInputMode("touch");
       if (state.screen !== "game") return;
       canvas.setPointerCapture(e.pointerId);
       const t = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
-      if (e.clientX < view.w / 2 && !state.touch.move) state.touch.move = t;
+      const moveSide = settings.lefty ? e.clientX >= view.w / 2 : e.clientX < view.w / 2;
+      if (moveSide && !state.touch.move) state.touch.move = t;
       else if (!state.touch.aim) state.touch.aim = t;
       return;
     }
@@ -1160,13 +1643,25 @@
     if (!gp) { pad.fire = pad.draw = pad.sprint = false; pad.move = pad.aim = { x: 0, y: 0, mag: 0 }; return; }
     const btn = (i) => { const b = gp.buttons[i]; return !!b && (b.pressed || b.value > 0.3); };
     const pressed = (i) => btn(i) && !pad.prev[i];
-    pad.move = deadzone(gp.axes[0] || 0, gp.axes[1] || 0, 0.18);
-    pad.aim = deadzone(gp.axes[2] || 0, gp.axes[3] || 0, 0.22);
+    const dz = { small: 0.1, normal: 0.18, large: 0.28 }[settings.deadzone] || 0.18;
+    pad.move = deadzone(gp.axes[0] || 0, gp.axes[1] || 0, dz);
+    pad.aim = deadzone(gp.axes[2] || 0, gp.axes[3] || 0, dz + 0.04);
     pad.fire = btn(PAD.R2);
     pad.draw = btn(PAD.L2);
     pad.sprint = btn(PAD.L1) || btn(PAD.L3);
     const anyUse = gp.buttons.some((b) => b && b.pressed) || pad.move.mag > 0 || pad.aim.mag > 0;
     if (anyUse) setInputMode("pad");
+    if (pressed(8)) toggleSettings();                     // Create / Share button
+    if (settingsOpen()) {
+      padSettings(pressed);
+      pad.fire = pad.draw = false;
+      pad.prev = gp.buttons.map((b) => !!b && (b.pressed || b.value > 0.3));
+      return;
+    }
+    if (settings.sprintMode === "toggle") {
+      if (pressed(PAD.L1) || pressed(PAD.L3)) state.sprintToggled = !state.sprintToggled;
+      pad.sprint = false;
+    }
 
     if (state.screen === "game") {
       if (pressed(PAD.R1) || pressed(PAD.CIRCLE)) tryDash();
@@ -1180,6 +1675,7 @@
       if (pressed(PAD.LEFT)) setClass(CLASSES[(ci - 1 + CLASSES.length) % CLASSES.length].key);
       if (pressed(PAD.RIGHT)) setClass(CLASSES[(ci + 1) % CLASSES.length].key);
       if (state.screen === "menu") {
+        if (pressed(PAD.UP) || pressed(13)) document.querySelector(`.mode-btn[data-mode="${state.menuMode === "ffa" ? "team" : "ffa"}"]`).click();
         const k = COLORS.indexOf(state.color);
         if (pressed(PAD.L1)) setColor(COLORS[(Math.max(0, k) - 1 + COLORS.length) % COLORS.length]);
         if (pressed(PAD.R1)) setColor(COLORS[(k + 1) % COLORS.length]);
@@ -1188,11 +1684,17 @@
           form.requestSubmit();
         }
       } else if (state.screen === "dead" && pressed(PAD.CROSS)) respawnBtn.click();
+      else if (state.screen === "lobby") {
+        if (pressed(PAD.L1)) socket.emit("lobbyTeam", "red");
+        if (pressed(PAD.R1)) socket.emit("lobbyTeam", "blue");
+        if (pressed(PAD.CROSS) && !readyBtn.disabled) readyBtn.click();
+        if (pressed(PAD.CIRCLE)) backToMenu();
+      }
     }
     pad.prev = gp.buttons.map((b) => !!b && (b.pressed || b.value > 0.3));
   }
   function rumble(ms, strength) {
-    if (state.inputMode !== "pad" || !pad.gp || !pad.gp.vibrationActuator) return;
+    if (!settings.rumble || state.inputMode !== "pad" || !pad.gp || !pad.gp.vibrationActuator) return;
     try { pad.gp.vibrationActuator.playEffect("dual-rumble", { duration: ms, strongMagnitude: strength, weakMagnitude: strength }); } catch (e) {}
   }
 
@@ -1201,7 +1703,8 @@
     const k = state.keys;
     let dx = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
     let dy = (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0) - (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0);
-    let sprint = k.has("ShiftLeft") || k.has("ShiftRight");
+    let sprint = settings.sprintMode === "toggle" ? !!state.sprintToggled : (k.has("ShiftLeft") || k.has("ShiftRight"));
+    if (state.exhausted) state.sprintToggled = false;
     const tMove = stickOf(state.touch.move);
     if (dx || dy) { const l = Math.hypot(dx, dy); dx /= l; dy /= l; }
     else if (tMove.mag > 0) { dx = tMove.x; dy = tMove.y; sprint = sprint || tMove.mag >= 0.95; }
@@ -1388,6 +1891,7 @@
 
   // ================= Effects =================
   function spark(x, y, color, power, angle, spread) {
+    if (settings.particles === "off" || (settings.particles === "low" && Math.random() < 0.6)) return;
     const a = angle === undefined ? Math.random() * Math.PI * 2 : angle + (Math.random() - 0.5) * (spread || 1);
     const sp = (80 + Math.random() * 220) * power;
     state.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.35 + Math.random() * 0.25, age: 0, color, size: 2 + Math.random() * 3 * Math.min(power, 1.5) });
@@ -1494,7 +1998,7 @@
       handleShooting(now);
       state.rangeHint += ((state.outOfRange ? 1 : 0) - state.rangeHint) * Math.min(1, dt * 12);
       updateHud(now);
-    } else if (!reducedMotion) {
+    } else if (!reducedMotion && settings.menuDrift) {
       idleT += dt;
       state.camera.x = WORLD_SIZE / 2 + Math.cos(idleT * 0.08) * 500;
       state.camera.y = WORLD_SIZE / 2 + Math.sin(idleT * 0.11) * 400;
@@ -1503,6 +2007,12 @@
 
   let lastBoardKey = "";
   function renderBoard() {
+    const ts = $("teamScore");
+    ts.classList.toggle("hidden", !state.scores);
+    if (state.scores) {
+      $("scoreR").textContent = state.scores.red; $("scoreB").textContent = state.scores.blue;
+      $("scoreT").textContent = `first to ${state.target}`;
+    }
     const key = JSON.stringify(state.board) + myId;
     if (key === lastBoardKey) return;        // only rebuild when something changed
     lastBoardKey = key;
@@ -1533,7 +2043,8 @@
     const hp = Math.max(0, Math.min(maxHp, state.hp));
     hpFill.style.width = (hp / maxHp) * 100 + "%";
     $("hpGhost").style.width = (hp / maxHp) * 100 + "%";
-    hpText.textContent = `${Math.ceil(hp)} / ${maxHp}`;
+    hpText.textContent = settings.hpText === "num" ? `${Math.ceil(hp)} / ${maxHp}`
+      : settings.hpText === "pct" ? `${Math.round((hp / maxHp) * 100)}%` : "";
 
     sprintFill.style.width = Math.min(100, state.stamina) + "%";
     sprintFill.classList.toggle("tired", state.exhausted);
@@ -1552,7 +2063,173 @@
   // ================= Render =================
   const view = { w: 0, h: 0, dpr: 1 };
   let colors = {};
+  // ================= Obstacle art =================
+  // Each obstacle is painted once onto its own little canvas (a "sprite") and reused every frame.
+  let obsCache = new WeakMap();
+  function rng(seed) {                 // small seeded random so each obstacle always looks the same
+    let t = seed >>> 0;
+    return () => { t += 0x6D2B79F5; let r = Math.imul(t ^ (t >>> 15), 1 | t); r ^= r + Math.imul(r ^ (r >>> 7), 61 | r); return ((r ^ (r >>> 14)) >>> 0) / 4294967296; };
+  }
+  function isDark() {
+    const hex = (colors.arena || "#eef3ea").replace("#", "");
+    const n = parseInt(hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex, 16);
+    return (((n >> 16) & 255) + ((n >> 8) & 255) + (n & 255)) / 3 < 110;
+  }
+  function obstacleSprite(o) {
+    let sp = obsCache.get(o);
+    if (sp) return sp;
+    const dark = isDark(), R = rng(o.seed || 1), dpr = view.dpr || 1;
+    const pad = 24;
+    const bw = o.type === "rock" ? o.r * 2 : o.w, bh = o.type === "rock" ? o.r * 2 : o.h;
+    const cv = document.createElement("canvas");
+    cv.width = Math.ceil((bw + pad * 2) * dpr); cv.height = Math.ceil((bh + pad * 2) * dpr);
+    const c = cv.getContext("2d");
+    c.scale(dpr, dpr);
+    c.translate(pad, pad);
+    c.lineJoin = "round"; c.lineCap = "round";
+    const skin = o.skin || (o.type === "rock" ? "boulder" : "ruin");
+    if (o.type === "rock") paintRound(c, o.r, skin, R, dark); else paintRect(c, o.w, o.h, skin, R, dark);
+    sp = { cv, pad, bw, bh };
+    obsCache.set(o, sp);
+    return sp;
+  }
+  function blob(c, cx, cy, r, n, R, wob) {
+    c.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2, rr = r * (1 - wob / 2 + R() * wob);
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+      i ? c.lineTo(x, y) : c.moveTo(x, y);
+    }
+    c.closePath();
+  }
+  function paintRound(c, r, skin, R, dark) {
+    const cx = r, cy = r;
+    if (skin === "tree") {
+      c.fillStyle = "rgba(0,0,0,0.18)"; c.beginPath(); c.ellipse(cx + 10, cy + 13, r, r * 0.92, 0, 0, Math.PI * 2); c.fill();
+      const deep = dark ? "#1f4d2a" : "#3d7a3a", mid = dark ? "#2d6a38" : "#4f9a4a", lite = dark ? "#3f8a48" : "#6cbd5f", hi = dark ? "#5aa860" : "#9bd98a";
+      const puffs = [[0, 0, 0.62]];
+      const n = 6 + Math.floor(R() * 3);
+      for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + R() * 0.4; puffs.push([Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.45, 0.42 + R() * 0.12]); }
+      for (const [col, grow] of [[deep, 1.1], [mid, 1], [lite, 0.78]]) {
+        c.fillStyle = col;
+        for (const [px, py, pr] of puffs) { c.beginPath(); c.arc(cx + px - (grow < 1 ? r * 0.06 : 0), cy + py - (grow < 1 ? r * 0.08 : 0), r * pr * grow, 0, Math.PI * 2); c.fill(); }
+      }
+      c.fillStyle = hi;
+      for (let i = 0; i < 7; i++) { c.beginPath(); c.arc(cx - r * 0.3 + R() * r * 0.5, cy - r * 0.35 + R() * r * 0.45, 3 + R() * 4, 0, Math.PI * 2); c.fill(); }
+      return;
+    }
+    if (skin === "crystal") {
+      c.fillStyle = "rgba(0,0,0,0.16)"; c.beginPath(); c.ellipse(cx + 8, cy + 11, r * 0.95, r * 0.8, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = dark ? "#3a4540" : "#9aa597"; blob(c, cx, cy, r * 0.8, 10, R, 0.25); c.fill();
+      c.lineWidth = 4; c.strokeStyle = dark ? "#2a3430" : "#7d8a7a"; c.stroke();
+      const pal = [["#c4b5fd", "#7c3aed"], ["#99f6e4", "#0d9488"], ["#fbcfe8", "#db2777"], ["#bfdbfe", "#2563eb"]][Math.floor(R() * 4)];
+      const shards = 5 + Math.floor(R() * 3);
+      for (let i = 0; i < shards; i++) {
+        const a = (i / shards) * Math.PI * 2 + R() * 0.5, len = r * (0.55 + R() * 0.45), wd = r * (0.16 + R() * 0.1);
+        c.save(); c.translate(cx + Math.cos(a) * r * 0.12, cy + Math.sin(a) * r * 0.12); c.rotate(a);
+        const g = c.createLinearGradient(0, -wd, 0, wd); g.addColorStop(0, pal[0]); g.addColorStop(1, pal[1]);
+        c.fillStyle = g;
+        c.beginPath(); c.moveTo(0, -wd * 0.7); c.lineTo(len * 0.75, -wd); c.lineTo(len, 0); c.lineTo(len * 0.75, wd); c.lineTo(0, wd * 0.7); c.closePath(); c.fill();
+        c.lineWidth = 2; c.strokeStyle = "rgba(0,0,0,0.25)"; c.stroke();
+        c.strokeStyle = "rgba(255,255,255,0.7)"; c.beginPath(); c.moveTo(len * 0.15, -wd * 0.35); c.lineTo(len * 0.8, -wd * 0.55); c.stroke();
+        c.restore();
+      }
+      return;
+    }
+    // boulder
+    c.fillStyle = "rgba(0,0,0,0.17)"; blob(c, cx + 9, cy + 12, r, 11, R, 0.14); c.fill();
+    const base = dark ? "#4a5a51" : "#aeb8a8", shade = dark ? "#34413b" : "#8a9585", lite = dark ? "#62756a" : "#cfd6c9";
+    const g = c.createLinearGradient(0, 0, r * 2, r * 2); g.addColorStop(0, lite); g.addColorStop(0.55, base); g.addColorStop(1, shade);
+    c.fillStyle = g; blob(c, cx, cy, r, 11, R, 0.14); c.fill();
+    c.lineWidth = 5; c.strokeStyle = shade; c.stroke();
+    c.strokeStyle = dark ? "#2a3430" : "#76816f"; c.lineWidth = 2.5;
+    for (let k = 0; k < 2 + Math.floor(R() * 2); k++) {
+      let a = R() * Math.PI * 2, x = cx + Math.cos(a) * r * 0.2, y = cy + Math.sin(a) * r * 0.2;
+      c.beginPath(); c.moveTo(x, y);
+      for (let s = 0; s < 3; s++) { a += (R() - 0.5) * 1.2; x += Math.cos(a) * r * 0.22; y += Math.sin(a) * r * 0.22; c.lineTo(x, y); }
+      c.stroke();
+    }
+    c.fillStyle = dark ? "#3f6b40" : "#86b36f";
+    for (let k = 0; k < 9; k++) { c.beginPath(); c.arc(cx - r * 0.55 + R() * r * 0.6, cy - r * 0.6 + R() * r * 0.4, 2 + R() * 4, 0, Math.PI * 2); c.fill(); }
+  }
+  function paintRect(c, w, h, skin, R, dark) {
+    c.fillStyle = "rgba(0,0,0,0.17)"; roundRectOn(c, 9, 12, w, h, 8); c.fill();
+    if (skin === "container") {
+      const pal = [["#d9534f", "#a33a37"], ["#3b82c4", "#2a5f91"], ["#e0913a", "#a8651f"], ["#2a9d8f", "#1d6f65"]][Math.floor(R() * 4)];
+      const long = w >= h;
+      roundRectOn(c, 0, 0, w, h, 5); c.fillStyle = dark ? pal[1] : pal[0]; c.fill();
+      c.strokeStyle = "rgba(0,0,0,0.22)"; c.lineWidth = 2.5;
+      for (let t = 10; t < (long ? w : h) - 6; t += 11) {
+        c.beginPath();
+        if (long) { c.moveTo(t, 5); c.lineTo(t, h - 5); } else { c.moveTo(5, t); c.lineTo(w - 5, t); }
+        c.stroke();
+      }
+      c.lineWidth = 5; c.strokeStyle = pal[1]; roundRectOn(c, 0, 0, w, h, 5); c.stroke();
+      c.fillStyle = "rgba(255,255,255,0.18)"; c.fillRect(6, 6, long ? w - 12 : 10, long ? 8 : h - 12);
+      c.save(); c.translate(w / 2, h / 2); if (!long) c.rotate(-Math.PI / 2);
+      c.fillStyle = "rgba(255,255,255,0.55)"; c.font = `700 ${Math.min(22, (long ? h : w) * 0.28)}px Fredoka, sans-serif`;
+      c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("SCOR.IO", 0, 0);
+      c.restore();
+      return;
+    }
+    if (skin === "crates") {
+      const cols = Math.max(1, Math.round(w / 72)), rows = Math.max(1, Math.round(h / 72));
+      const cw = w / cols, ch = h / rows;
+      for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+        const x = i * cw + 2, y = j * ch + 2, ww = cw - 4, hh = ch - 4;
+        const tone = R() * 0.12;
+        c.fillStyle = dark ? `hsl(30 ${35}% ${28 + tone * 40}%)` : `hsl(32 ${50}% ${52 + tone * 40}%)`;
+        roundRectOn(c, x, y, ww, hh, 4); c.fill();
+        c.strokeStyle = dark ? "#3b2a18" : "#8a5a2b"; c.lineWidth = 3.5; c.stroke();
+        c.lineWidth = 2; c.strokeStyle = dark ? "rgba(0,0,0,0.3)" : "rgba(120,70,20,0.45)";
+        for (let k = 1; k < 3; k++) { c.beginPath(); c.moveTo(x + 4, y + (hh * k) / 3); c.lineTo(x + ww - 4, y + (hh * k) / 3); c.stroke(); }
+        c.lineWidth = 4; c.beginPath(); c.moveTo(x + 5, y + 5); c.lineTo(x + ww - 5, y + hh - 5); c.stroke();
+      }
+      return;
+    }
+    // ruin: stone bricks with moss
+    c.save(); roundRectOn(c, 0, 0, w, h, 6); c.clip();
+    c.fillStyle = dark ? "#2e2c27" : "#8f877a"; c.fillRect(0, 0, w, h);
+    const bw = 44, bh = 24;
+    for (let y = 0, row = 0; y < h; y += bh, row++) {
+      for (let x = row % 2 ? -bw / 2 : 0; x < w; x += bw) {
+        if (R() < 0.06) continue;                    // a missing brick here and there
+        const l = (dark ? 30 : 68) + R() * 10;
+        c.fillStyle = `hsl(40 10% ${l}%)`;
+        c.fillRect(x + 2, y + 2, bw - 4, bh - 4);
+        c.fillStyle = "rgba(255,255,255,0.12)"; c.fillRect(x + 2, y + 2, bw - 4, 4);
+      }
+    }
+    c.fillStyle = dark ? "rgba(70,120,60,0.8)" : "rgba(110,160,85,0.85)";
+    for (let k = 0; k < 14; k++) { c.beginPath(); c.arc(R() * w, R() < 0.5 ? R() * 14 : h - R() * 14, 3 + R() * 7, 0, Math.PI * 2); c.fill(); }
+    c.restore();
+    c.lineWidth = 5; c.strokeStyle = dark ? "#1f1d19" : "#6e6759"; roundRectOn(c, 0, 0, w, h, 6); c.stroke();
+  }
+  function roundRectOn(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+  }
+  function drawObstacle(o, sx, sy, now) {
+    const sp = obstacleSprite(o);
+    const left = (o.type === "rock" ? sx - o.r : sx) - sp.pad, top = (o.type === "rock" ? sy - o.r : sy) - sp.pad;
+    const W = sp.bw + sp.pad * 2, H = sp.bh + sp.pad * 2;
+    if (o.skin === "tree" && !reducedMotion) {
+      // trees sway a little in the breeze
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.sin(now / 1400 + o.seed) * 0.025);
+      ctx.drawImage(sp.cv, -o.r - sp.pad, -o.r - sp.pad, W, H); ctx.restore();
+    } else ctx.drawImage(sp.cv, left, top, W, H);
+    if (o.skin === "crystal") {
+      // crystals glow softly
+      const k = reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(now / 600 + o.seed);
+      const g = ctx.createRadialGradient(sx, sy, o.r * 0.2, sx, sy, o.r * 1.5);
+      g.addColorStop(0, `rgba(255,255,255,${0.12 + k * 0.12})`); g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, o.r * 1.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   function readTheme() {
+    obsCache = new WeakMap();
     const s = getComputedStyle(document.documentElement);
     colors = {
       arena: s.getPropertyValue("--arena").trim(), grid: s.getPropertyValue("--grid").trim(),
@@ -1615,9 +2292,14 @@
 
   function drawPlayer(p, sx, sy, opts = {}) {
     const now = opts.now || performance.now();
+    if (opts.teamColor) {
+      // team ring on the ground
+      ctx.beginPath(); ctx.ellipse(sx, sy + p.r * 0.95, p.r * 1.05, p.r * 0.36, 0, 0, Math.PI * 2);
+      ctx.lineWidth = 4; ctx.strokeStyle = opts.teamColor; ctx.globalAlpha = 0.8; ctx.stroke(); ctx.globalAlpha = 1;
+    }
     const sk = opts.spawnK === undefined ? 1 : opts.spawnK;
     const sc = sk >= 1 ? 1 : Math.max(0.01, easeOutBack(sk));
-    const bob = opts.moving && !reducedMotion ? -Math.abs(Math.sin(now / 105)) * 3.2 : 0;
+    const bob = opts.moving && !reducedMotion && settings.bob ? -Math.abs(Math.sin(now / 105)) * 3.2 : 0;
     // soft shadow on the ground
     ctx.beginPath();
     ctx.ellipse(sx, sy + p.r * 0.95, p.r * 0.85 * sc, p.r * 0.26 * sc, 0, 0, Math.PI * 2);
@@ -1633,14 +2315,15 @@
     ctx.font = `600 14px Fredoka, "Trebuchet MS", sans-serif`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.lineWidth = 3.5; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(0,0,0,0.55)";
-    ctx.strokeText(p.name, sx, sy - p.r - 9);
-    ctx.fillStyle = "#fff"; ctx.fillText(p.name, sx, sy - p.r - 9);
+    const shownName = opts.showHp && settings.names === "hide" && !opts.ally ? "Player" : p.name;
+    ctx.strokeText(shownName, sx, sy - p.r - 9);
+    ctx.fillStyle = "#fff"; ctx.fillText(shownName, sx, sy - p.r - 9);
 
     // health bar above other players' names
     if (opts.showHp && typeof p.hp === "number") {
       const bw = 56, bh = 6, bx = sx - bw / 2, by = sy - p.r - 29;
       ctx.fillStyle = "rgba(0,0,0,0.35)"; roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 4); ctx.fill();
-      ctx.fillStyle = "#dc2626"; roundRect(bx, by, bw * Math.max(0, Math.min(1, p.hp / (p.maxHp || HP_MAX))), bh, 3); ctx.fill();
+      ctx.fillStyle = opts.ally ? "#22c55e" : settings.enemyHp; roundRect(bx, by, bw * Math.max(0, Math.min(1, p.hp / (p.maxHp || HP_MAX))), bh, 3); ctx.fill();
     }
     // ink bar under the player
     if (typeof p.ink === "number") {
@@ -1721,40 +2404,34 @@
     ctx.fillStyle = colors.outside; ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = colors.arena; ctx.fillRect(ox, oy, WORLD_SIZE, WORLD_SIZE);
     // big faint checker tiles so movement feels faster
-    const T = 300;
+    const T = settings.floor === "both" ? 300 : 1e9;
     ctx.fillStyle = "rgba(0,0,0,0.022)";
     for (let tx = Math.max(0, Math.floor(-ox / T)); tx * T + ox < w && tx * T < WORLD_SIZE; tx++)
       for (let ty = Math.max(0, Math.floor(-oy / T)); ty * T + oy < h && ty * T < WORLD_SIZE; ty++)
         if ((tx + ty) % 2 === 0) ctx.fillRect(tx * T + ox, ty * T + oy, T, T);
 
-    ctx.strokeStyle = colors.grid; ctx.lineWidth = 1.5; ctx.beginPath();
+    ctx.strokeStyle = settings.floor === "plain" ? "rgba(0,0,0,0)" : colors.grid; ctx.lineWidth = 1.5; ctx.beginPath();
     const left = Math.max(0, Math.floor(-ox / GRID) * GRID), right = Math.min(WORLD_SIZE, left + w + GRID * 2);
     const top = Math.max(0, Math.floor(-oy / GRID) * GRID), bottom = Math.min(WORLD_SIZE, top + h + GRID * 2);
     for (let x = left; x <= right; x += GRID) { ctx.moveTo(x + ox, Math.max(0, oy)); ctx.lineTo(x + ox, Math.min(h, oy + WORLD_SIZE)); }
     for (let y = top; y <= bottom; y += GRID) { ctx.moveTo(Math.max(0, ox), y + oy); ctx.lineTo(Math.min(w, ox + WORLD_SIZE), y + oy); }
     ctx.stroke();
 
-    // obstacles (only the ones on screen), with a drop shadow and a highlight
+    // team battle: each side of the map is tinted in its team's color
+    if (state.mode === "team" && state.screen !== "menu") {
+      const half = WORLD_SIZE / 2;
+      ctx.fillStyle = "rgba(239,68,68,0.07)"; ctx.fillRect(ox, oy, half, WORLD_SIZE);
+      ctx.fillStyle = "rgba(59,130,246,0.07)"; ctx.fillRect(ox + half, oy, half, WORLD_SIZE);
+      ctx.setLineDash([26, 18]); ctx.lineWidth = 6; ctx.strokeStyle = "rgba(0,0,0,0.12)";
+      ctx.beginPath(); ctx.moveTo(ox + half, oy); ctx.lineTo(ox + half, oy + WORLD_SIZE); ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // obstacles (only the ones on screen)
     for (const o of state.obstacles) {
-      if (o.type === "rock") {
-        if (o.x + o.r + ox < -20 || o.x - o.r + ox > w || o.y + o.r + oy < -20 || o.y - o.r + oy > h) continue;
-        ctx.beginPath(); ctx.arc(o.x + ox + 7, o.y + oy + 10, o.r, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fill();
-        ctx.beginPath(); ctx.arc(o.x + ox, o.y + oy, o.r, 0, Math.PI * 2);
-        ctx.fillStyle = colors.rock; ctx.fill();
-        ctx.lineWidth = 6; ctx.strokeStyle = colors.rockEdge; ctx.stroke();
-        ctx.beginPath(); ctx.arc(o.x + ox - o.r * 0.28, o.y + oy - o.r * 0.3, o.r * 0.42, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.13)"; ctx.fill();
-      } else {
-        if (o.x + o.w + ox < -20 || o.x + ox > w || o.y + o.h + oy < -20 || o.y + oy > h) continue;
-        roundRect(o.x + ox + 7, o.y + oy + 10, o.w, o.h, 10);
-        ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fill();
-        roundRect(o.x + ox, o.y + oy, o.w, o.h, 10);
-        ctx.fillStyle = colors.block; ctx.fill();
-        ctx.lineWidth = 6; ctx.strokeStyle = colors.blockEdge; ctx.stroke();
-        roundRect(o.x + ox + 8, o.y + oy + 8, o.w - 16, Math.min(18, o.h / 4), 6);
-        ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fill();
-      }
+      const size = o.type === "rock" ? o.r : Math.max(o.w, o.h);
+      const sx = o.x + ox, sy = o.y + oy;
+      if (sx + size + 40 < 0 || sy + size + 40 < 0 || sx - size - 40 > w || sy - size - 40 > h) continue;
+      drawObstacle(o, sx, sy, now);
     }
 
     // upgrade crates
@@ -1791,12 +2468,14 @@
     for (const [id, o] of state.others) {
       drawPlayer({ r: PLAYER_RADIUS, name: o.name, color: o.color, cls: o.cls, ink: o.ink, hp: o.hp, maxHp: o.maxHp }, o.x + ox, o.y + oy,
         { showHp: true, aim: o.aim || 0, firedAt: state.recoil.get(id), now, moving: o.moving,
+          teamColor: o.team ? TEAM_COLORS[o.team] : null, ally: !!(o.team && o.team === state.team),
           spawnK: state.spawnT.has(id) ? Math.min(1, (now - state.spawnT.get(id)) / 480) : 1 });
     }
     if (state.player) {
       const dashing = now < state.dashUntil;
       drawPlayer(state.player, state.player.x + ox, state.player.y + oy,
         { stretch: dashing ? Math.atan2(state.dashDir.y, state.dashDir.x) : 0, aim: state.aim, firedAt: state.recoil.get("me"), now,
+          teamColor: state.team ? TEAM_COLORS[state.team] : null,
           moving: state.moveMag > 0.1, spawnK: state.spawnT.has("me") ? Math.min(1, (now - state.spawnT.get("me")) / 480) : 1 });
     }
 
@@ -1858,7 +2537,8 @@
       const missing = 1 - Math.max(0, Math.min(1, state.hp / state.stats.maxHp));
       let strength = Math.min(1, missing * 1.15) * 0.75;
       if (state.hp < 30 && !reducedMotion) strength += 0.08 * (1 + Math.sin(now / 180));
-      strength = Math.min(0.95, strength + state.hurtFlash * 0.35);
+      if (settings.vignette === "soft") strength *= 0.6;
+      strength = Math.min(0.95, strength + state.hurtFlash * (settings.flash === "soft" ? 0.15 : 0.35));
       if (strength > 0.01) {
         const inner = Math.min(w, h) * (0.5 - missing * 0.22);
         const g = ctx.createRadialGradient(w / 2, h / 2, inner, w / 2, h / 2, Math.hypot(w, h) / 2);
@@ -1884,22 +2564,30 @@
       x = state.aimPoint.x - state.camera.x + view.w / 2;
       y = state.aimPoint.y - state.camera.y + view.h / 2;
     }
-    const gap = 7 + state.spread, len = 8;
+    const size = { s: 0.75, m: 1, l: 1.35 }[settings.chSize] || 1;
+    const spread = settings.chSpread ? state.spread : 0;
+    const gap = (7 + spread) * size, len = 8 * size;
+    const color = state.drawing ? "#38bdf8" : settings.chColor;
     ctx.lineCap = "round";
     for (const pass of [0, 1]) {            // dark outline, then bright line on top
       ctx.lineWidth = pass ? 2.5 : 5.5;
-      ctx.strokeStyle = pass ? (state.drawing ? "#38bdf8" : "#ffffff") : "rgba(0,0,0,0.55)";
+      ctx.strokeStyle = pass ? color : "rgba(0,0,0,0.55)";
       ctx.beginPath();
-      ctx.moveTo(x - gap - len, y); ctx.lineTo(x - gap, y);
-      ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + len, y);
-      ctx.moveTo(x, y - gap - len); ctx.lineTo(x, y - gap);
-      ctx.moveTo(x, y + gap); ctx.lineTo(x, y + gap + len);
-      ctx.stroke();
-      ctx.beginPath(); ctx.arc(x, y, pass ? 1.8 : 3, 0, Math.PI * 2);
+      if (settings.chStyle === "cross") {
+        ctx.moveTo(x - gap - len, y); ctx.lineTo(x - gap, y);
+        ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + len, y);
+        ctx.moveTo(x, y - gap - len); ctx.lineTo(x, y - gap);
+        ctx.moveTo(x, y + gap); ctx.lineTo(x, y + gap + len);
+        ctx.stroke();
+      } else if (settings.chStyle === "circle") {
+        ctx.arc(x, y, gap + len * 0.6, 0, Math.PI * 2); ctx.stroke();
+      }
+      const dotR = (settings.chStyle === "dot" ? 3.2 : 1.8) * size;
+      ctx.beginPath(); ctx.arc(x, y, pass ? dotR : dotR + 1.3, 0, Math.PI * 2);
       ctx.fillStyle = ctx.strokeStyle; ctx.fill();
     }
     // hit marker: a quick X when your bullet lands
-    const hk = (performance.now() - state.hitmarker) / 220;
+    const hk = settings.hitmarker ? (performance.now() - state.hitmarker) / 220 : 1;
     if (hk < 1) {
       const r1 = 9 + hk * 4, r2 = 17 + hk * 4;
       ctx.globalAlpha = 1 - hk;
@@ -1919,9 +2607,11 @@
   function drawSticks() {
     if (state.inputMode !== "touch" || state.screen !== "game") return;
     const { w, h } = view;
+    STICK_R = stickR();
+    const vis = { faint: 0.55, normal: 1, bold: 1.35 }[settings.stickAlpha] || 1;
     const drawStick = (t, fallbackX, color) => {
-      const ox = t ? t.ox : fallbackX, oy = t ? t.oy : h - 110;
-      ctx.globalAlpha = t ? 0.9 : 0.35;
+      const ox = t ? t.ox : fallbackX, oy = t ? t.oy : h - 50 - STICK_R;
+      ctx.globalAlpha = Math.min(1, (t ? 0.9 : 0.35) * vis);
       ctx.beginPath(); ctx.arc(ox, oy, STICK_R, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.stroke();
@@ -1930,12 +2620,13 @@
         const dx = t.x - t.ox, dy = t.y - t.oy, l = Math.hypot(dx, dy), m = Math.min(l, STICK_R);
         if (l > 0) { kx = ox + (dx / l) * m; ky = oy + (dy / l) * m; }
       }
-      ctx.beginPath(); ctx.arc(kx, ky, 26, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(kx, ky, STICK_R * 0.43, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
       ctx.globalAlpha = 1;
     };
-    drawStick(state.touch.move, 110, "rgba(255,255,255,0.85)");
-    if (!(state.touch.drawMode && state.touch.aim)) drawStick(state.touch.aim, w - 110, state.touch.drawMode ? "#38bdf8" : "rgba(239,68,68,0.9)");
+    const leftX = 50 + STICK_R, rightX = w - 50 - STICK_R;
+    drawStick(state.touch.move, settings.lefty ? rightX : leftX, "rgba(255,255,255,0.85)");
+    if (!(state.touch.drawMode && state.touch.aim)) drawStick(state.touch.aim, settings.lefty ? leftX : rightX, state.touch.drawMode ? "#38bdf8" : "rgba(239,68,68,0.9)");
   }
 
   function renderMinimap() {
@@ -1949,11 +2640,31 @@
       if (o.type === "rock") { mctx.beginPath(); mctx.arc(pad + o.x * scale, pad + o.y * scale, Math.max(1.5, o.r * scale), 0, Math.PI * 2); mctx.fill(); }
       else mctx.fillRect(pad + o.x * scale, pad + o.y * scale, Math.max(2, o.w * scale), Math.max(2, o.h * scale));
     }
+    if (state.mode === "team") {
+      const inner = size - pad * 2;
+      mctx.fillStyle = "rgba(239,68,68,0.14)"; mctx.fillRect(pad, pad, inner / 2, inner);
+      mctx.fillStyle = "rgba(59,130,246,0.14)"; mctx.fillRect(pad + inner / 2, pad, inner / 2, inner);
+    }
     mctx.fillStyle = "#f59e0b";
     for (const c of state.crates.values()) mctx.fillRect(pad + c.x * scale - 2.5, pad + c.y * scale - 2.5, 5, 5);
+    // enemies only show as a soft glow over the rough area they're in (never an exact dot)
+    const areas = new Map();
+    const addArea = (ax, ay, color) => { const k = ax + "," + ay; if (!areas.has(k)) areas.set(k, { ax, ay, color }); };
+    for (const o of state.others.values()) if (!(o.team && o.team === state.team)) addArea(Math.floor(o.x / AREA_CELL), Math.floor(o.y / AREA_CELL), o.color);
+    for (const f of state.far.values()) if (!(f.team && f.team === state.team)) addArea(f.ax, f.ay, f.color);
+    const pulse = reducedMotion ? 0.8 : 0.65 + 0.35 * Math.sin(performance.now() / 400);
+    for (const a of areas.values()) {
+      const cx = pad + (a.ax + 0.5) * AREA_CELL * scale, cy = pad + (a.ay + 0.5) * AREA_CELL * scale, r = AREA_CELL * scale * 0.62;
+      const g = mctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, a.color + "99"); g.addColorStop(1, a.color + "00");
+      mctx.globalAlpha = pulse; mctx.fillStyle = g; mctx.beginPath(); mctx.arc(cx, cy, r, 0, Math.PI * 2); mctx.fill();
+    }
+    mctx.globalAlpha = 1;
+    // teammates: exact
     for (const o of state.others.values()) {
+      if (!(o.team && o.team === state.team)) continue;
       mctx.beginPath(); mctx.arc(pad + o.x * scale, pad + o.y * scale, 3, 0, Math.PI * 2);
-      mctx.fillStyle = o.color; mctx.fill();
+      mctx.fillStyle = o.color; mctx.fill(); mctx.lineWidth = 1; mctx.strokeStyle = "#fff"; mctx.stroke();
     }
     const p = state.player; if (!p) return;
     mctx.beginPath(); mctx.arc(pad + p.x * scale, pad + p.y * scale, 4, 0, Math.PI * 2);
@@ -1962,8 +2673,19 @@
 
   // ================= Loop =================
   let last = performance.now();
+  let fpsFrames = 0, fpsT = 0, ping = null;
+  setInterval(() => {
+    if (!settings.perf || !socket.connected) return;
+    const t0 = performance.now();
+    socket.emit("pingCheck", () => { ping = Math.round(performance.now() - t0); });
+  }, 2000);
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
+    fpsFrames++; fpsT += now - last;
+    if (fpsT > 500) {
+      if (settings.perf) $("perf").textContent = `${Math.round((fpsFrames * 1000) / fpsT)} fps  ${ping === null ? "--" : ping + " ms"}`;
+      fpsFrames = 0; fpsT = 0;
+    }
     last = now;
     pollPad();
     update(dt);
@@ -1972,13 +2694,12 @@
   }
 
   // ================= Boot =================
-  const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-  let reducedMotion = motionQuery.matches;
-  motionQuery.addEventListener?.("change", (e) => { reducedMotion = e.matches; });
+  window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", () => applySettings());
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", readTheme);
   new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   window.addEventListener("resize", resize);
 
+  applySettings();
   if (window.matchMedia("(pointer: coarse)").matches) setInputMode("touch");
   window.addEventListener("gamepadconnected", () => { setInputMode("pad"); toast("Controller connected!"); });
 
